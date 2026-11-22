@@ -19,7 +19,6 @@ spec:
           name: my-issuer
           kind: ClusterIssuer
           group: cert-manager.io
-  (backup == null): true
 ---
 # The operator has not scaled the cluster yet: 3 instances are ready, 2 asked.
 apiVersion: core.openeverest.io/v1alpha1

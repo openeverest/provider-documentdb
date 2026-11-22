@@ -19,6 +19,8 @@ spec:
       service:
         serviceType: LoadBalancer
   parameters:
+    # Chainsaw patches the Instance: null removes the schedule and retention.
+    backup: null
     tls:
       issuer:
         name: my-issuer
