@@ -1,0 +1,9 @@
+# The CloudNativePG Cluster the operator would create for the DocumentDB.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: test-instance
+spec:
+  instances: 3
+  storage:
+    size: 10Gi

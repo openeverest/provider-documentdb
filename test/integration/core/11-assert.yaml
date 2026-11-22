@@ -1,0 +1,30 @@
+# Once the operator reports the cluster healthy with every instance ready,
+# the Instance is Ready and publishes how to connect.
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: test-instance
+status:
+  phase: Provisioned
+  (conditions[?type == 'Ready'].status | [0]): "True"
+  (conditions[?type == 'ConnectionDetailsReady'].status | [0]): "True"
+---
+# The pods inherit the OpenEverest labels from the Cluster.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: test-instance
+  labels:
+    core.openeverest.io/instance: test-instance
+    core.openeverest.io/component: engine
+    core.openeverest.io/provider: documentdb
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-instance-conn
+data:
+  type: bW9uZ29kYg==
+  port: MTAyNjA=
+  username: ZXZlcmVzdA==
+  (length("ca.crt") > `0`): true

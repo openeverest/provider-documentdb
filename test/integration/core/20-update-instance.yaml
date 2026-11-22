@@ -1,0 +1,25 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: test-instance
+spec:
+  providerRef:
+    name: documentdb
+  topology:
+    type: replicaSet
+  components:
+    engine:
+      replicas: 2
+      resources:
+        limits:
+          cpu: "2"
+          memory: 4Gi
+      storage:
+        size: 20Gi
+      service:
+        serviceType: LoadBalancer
+  parameters:
+    tls:
+      issuer:
+        name: my-issuer
+        kind: ClusterIssuer

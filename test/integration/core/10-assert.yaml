@@ -1,0 +1,49 @@
+# The provider renders the Instance into the operator's resources. TLS, high
+# availability and the generated credentials need no setting.
+apiVersion: documentdb.io/v1
+kind: DocumentDB
+metadata:
+  name: test-instance
+  ownerReferences:
+    - apiVersion: core.openeverest.io/v1alpha1
+      kind: Instance
+      name: test-instance
+      controller: true
+spec:
+  nodeCount: 1
+  instancesPerNode: 3
+  documentDBVersion: "1.0.1"
+  schemaVersion: auto
+  documentDbCredentialSecret: test-instance-credentials
+  resource:
+    cpu: "1"
+    memory: 2Gi
+    storage:
+      pvcSize: 10Gi
+      persistentVolumeReclaimPolicy: Delete
+  exposeViaService:
+    serviceType: ClusterIP
+  tls:
+    gateway:
+      mode: SelfSigned
+  backup:
+    retentionDays: 7
+  (monitoring == null): true
+---
+apiVersion: documentdb.io/v1
+kind: ScheduledBackup
+metadata:
+  name: test-instance
+spec:
+  cluster:
+    name: test-instance
+  schedule: "0 2 * * *"
+  retentionDays: 7
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-instance-credentials
+data:
+  username: ZXZlcmVzdA==
+  (length(password) > `0`): true

@@ -1,0 +1,24 @@
+# Component type version catalog.
+# A version is a DocumentDB engine release (spec.documentDBVersion on the
+# DocumentDB resource): the operator derives the extension and gateway images
+# from it. The image listed here is the extension image of that release.
+# Add new versions when the bundled operator supports them.
+
+componentTypes:
+  documentdb:
+    defaultVersion: "1.0.1"
+    versions:
+    - version: "1.0.0"
+      image: ghcr.io/documentdb/documentdb-kubernetes-operator/documentdb:1.0.0
+    - version: "1.0.1"
+      image: ghcr.io/documentdb/documentdb-kubernetes-operator/documentdb:1.0.1
+
+# Version bundles. Users set spec.version on an Instance to select a bundle.
+defaultVersion: "1.0.1"
+versions:
+- name: "1.0.1"
+  components:
+    engine: "1.0.1"
+- name: "1.0.0"
+  components:
+    engine: "1.0.0"

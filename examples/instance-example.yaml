@@ -1,0 +1,37 @@
+# Example Instance for the DocumentDB provider: highly available, with a
+# certificate from a cert-manager issuer and nightly VolumeSnapshot backups.
+#
+# Prerequisites:
+#   1. OpenEverest and cert-manager installed
+#   2. The provider chart installed (it brings the DocumentDB operator)
+#   3. For backups: a CSI driver with snapshot support and a default
+#      VolumeSnapshotClass
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: example-instance
+spec:
+  providerRef:
+    name: documentdb
+  version: "1.0.1"
+  topology:
+    type: replicaSet
+  components:
+    engine:
+      replicas: 3
+      resources:
+        limits:
+          cpu: "1"
+          memory: 2Gi
+      storage:
+        size: 10Gi
+      service:
+        serviceType: ClusterIP
+  parameters:
+    tls:
+      issuer:
+        name: my-ca-issuer
+        kind: ClusterIssuer
+    backup:
+      schedule: "0 2 * * *"
+      retentionDays: 14

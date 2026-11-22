@@ -1,0 +1,17 @@
+# The operator runs at most three instances and has no NodePort service.
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: invalid-instance
+spec:
+  providerRef:
+    name: documentdb
+  topology:
+    type: replicaSet
+  components:
+    engine:
+      replicas: 5
+      storage:
+        size: 10Gi
+      service:
+        serviceType: NodePort
