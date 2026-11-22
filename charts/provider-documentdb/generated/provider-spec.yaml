@@ -51,12 +51,11 @@ spec:
               description: Backup restores the new instance from a backup.
               properties:
                 name:
-                  description: Name of a completed documentdb.io Backup in the instance namespace.
+                  description: |-
+                    Name of a completed documentdb.io Backup in the instance namespace.
+                    Without a name the instance starts empty.
                   maxLength: 253
-                  minLength: 1
                   type: string
-              required:
-                - name
               type: object
           type: object
         tls:
@@ -72,7 +71,9 @@ spec:
               maxLength: 253
               type: string
             issuer:
-              description: Issuer is the cert-manager issuer that signs the certificate.
+              description: |-
+                Issuer is the cert-manager issuer that signs the certificate. It is
+                ignored without a name.
               properties:
                 kind:
                   default: Issuer
@@ -84,15 +85,12 @@ spec:
                 name:
                   description: Name of the issuer.
                   maxLength: 253
-                  minLength: 1
                   type: string
-              required:
-                - name
               type: object
           type: object
           x-kubernetes-validations:
             - message: set either certificateSecretName or issuer, not both
-              rule: '!(has(self.certificateSecretName) && self.certificateSecretName != '''' && has(self.issuer))'
+              rule: '!(has(self.certificateSecretName) && self.certificateSecretName != '''' && has(self.issuer) && has(self.issuer.name) && self.issuer.name != '''')'
       type: object
   release:
     version: 0.1.0
@@ -289,7 +287,8 @@ spec:
                       path: spec.components.engine.resources.limits.cpu
                       uiType: number
                       validation:
-                        min: 0.5
+                        int: true
+                        min: 1
                         required: true
                     disk:
                       fieldParams:

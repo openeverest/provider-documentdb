@@ -89,6 +89,8 @@ func TestBuildGatewayTLS(t *testing.T) {
 	assert.Equal(t, "Issuer", issued.CertManager.IssuerRef.Kind)
 
 	assert.Equal(t, "SelfSigned", buildGatewayTLS(&definition.TLSParameters{}).Mode)
+	// The UI submits the default issuer kind without a name.
+	assert.Equal(t, "SelfSigned", buildGatewayTLS(&definition.TLSParameters{Issuer: &definition.IssuerReference{Kind: "Issuer"}}).Mode)
 }
 
 func TestBuildAffinityReplacesDefault(t *testing.T) {

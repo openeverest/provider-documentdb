@@ -118,7 +118,7 @@ func validateUpdate(in, old *corev1alpha1.Instance, params definition.Parameters
 	spec := field.NewPath("spec")
 
 	oldParams, err := parametersOf(old)
-	if err == nil && !reflect.DeepEqual(params.Bootstrap, oldParams.Bootstrap) {
+	if err == nil && params.BackupName() != oldParams.BackupName() {
 		errs = append(errs, field.Forbidden(spec.Child("parameters", "bootstrap"),
 			"can only be set when the instance is created"))
 	}
@@ -185,11 +185,10 @@ func (p *Provider) ValidateReferences(c *controller.Context) (field.ErrorList, e
 		return nil, fmt.Errorf("get DocumentDB: %w", err)
 	}
 
-	params := decodeParameters(c)
-	if params.Bootstrap == nil || params.Bootstrap.Backup == nil {
+	name := decodeParameters(c).BackupName()
+	if name == "" {
 		return errs, nil
 	}
-	name := params.Bootstrap.Backup.Name
 	backup := &dbv1.Backup{}
 	err := c.Get(backup, name)
 	switch {

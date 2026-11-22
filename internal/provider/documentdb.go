@@ -64,10 +64,10 @@ func buildDocumentDB(
 	if params.Backup != nil && params.Backup.RetentionDays != nil {
 		db.Spec.Backup = &dbv1.BackupConfiguration{RetentionDays: int(*params.Backup.RetentionDays)}
 	}
-	if params.Bootstrap != nil && params.Bootstrap.Backup != nil {
+	if name := params.BackupName(); name != "" {
 		db.Spec.Bootstrap = &dbv1.BootstrapConfiguration{
 			Recovery: &dbv1.RecoveryConfiguration{
-				Backup: cnpgv1.LocalObjectReference{Name: params.Bootstrap.Backup.Name},
+				Backup: cnpgv1.LocalObjectReference{Name: name},
 			},
 		}
 	}
@@ -146,7 +146,9 @@ func buildGatewayTLS(tls *definition.TLSParameters) *dbv1.GatewayTLS {
 			Mode:     tlsModeProvided,
 			Provided: &dbv1.ProvidedTLS{SecretName: tls.CertificateSecretName},
 		}
-	case tls != nil && tls.Issuer != nil:
+	// The UI submits the issuer kind's default on its own: an issuer without
+	// a name is none.
+	case tls != nil && tls.Issuer != nil && tls.Issuer.Name != "":
 		kind := tls.Issuer.Kind
 		if kind == "" {
 			kind = definition.IssuerKindIssuer

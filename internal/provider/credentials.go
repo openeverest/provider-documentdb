@@ -59,10 +59,10 @@ func ensureCredentials(c *controller.Context, params definition.Parameters) (str
 		ObjectMeta: c.ObjectMeta(name),
 		Type:       corev1.SecretTypeOpaque,
 	}
-	if params.Bootstrap != nil && params.Bootstrap.Backup != nil {
+	if backupName := params.BackupName(); backupName != "" {
 		// A restore brings the users of the source back with the data: the
 		// restored instance only opens with their credentials.
-		source, err := sourceCredentials(c, params.Bootstrap.Backup.Name)
+		source, err := sourceCredentials(c, backupName)
 		if err != nil {
 			return "", err
 		}

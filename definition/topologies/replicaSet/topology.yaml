@@ -95,7 +95,10 @@ ui:
                     defaultValue: 1
                     step: 1
                   validation:
-                    min: 0.5
+                    # Whole CPUs: the API takes a number field's value as it
+                    # is and rejects a fraction as a quantity.
+                    min: 1
+                    int: true
                     required: true
                 memory:
                   path: "spec.components.engine.resources.limits.memory"

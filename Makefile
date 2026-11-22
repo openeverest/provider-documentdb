@@ -180,7 +180,7 @@ install-crds: ## Install OpenEverest CRDs (and your operator's CRDs) into the cl
 	kubectl apply --server-side -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/v$(CNPG_VERSION)/config/crd/bases/postgresql.cnpg.io_clusters.yaml
 
 .PHONY: deploy-provider-ci
-deploy-provider-ci: ## Deploy the provider via Helm for CI (IMG must already be imported into k3d).
+deploy-provider-ci: helm-deps ## Deploy the provider via Helm for CI (IMG must already be imported into k3d).
 	# Without the operator: integration tests simulate it by patching the
 	# status of the resources it would reconcile. install-crds brings its CRDs.
 	helm upgrade --install provider-documentdb $(CHART_DIR) \

@@ -31,7 +31,7 @@ type Parameters struct {
 // of precedence: the certificate secret, the cert-manager issuer, or else a
 // self-signed issuer the operator creates for the instance with cert-manager.
 //
-// +kubebuilder:validation:XValidation:rule="!(has(self.certificateSecretName) && self.certificateSecretName != '' && has(self.issuer))",message="set either certificateSecretName or issuer, not both"
+// +kubebuilder:validation:XValidation:rule="!(has(self.certificateSecretName) && self.certificateSecretName != '' && has(self.issuer) && has(self.issuer.name) && self.issuer.name != '')",message="set either certificateSecretName or issuer, not both"
 type TLSParameters struct {
 	// CertificateSecretName names a Secret in the instance namespace with
 	// the certificate clients connect to: tls.crt and tls.key, and ca.crt
@@ -40,7 +40,8 @@ type TLSParameters struct {
 	// +optional
 	CertificateSecretName string `json:"certificateSecretName,omitempty"`
 
-	// Issuer is the cert-manager issuer that signs the certificate.
+	// Issuer is the cert-manager issuer that signs the certificate. It is
+	// ignored without a name.
 	// +optional
 	Issuer *IssuerReference `json:"issuer,omitempty"`
 }
@@ -59,9 +60,9 @@ const (
 // IssuerReference refers to a cert-manager issuer.
 type IssuerReference struct {
 	// Name of the issuer.
-	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=253
-	Name string `json:"name"`
+	// +optional
+	Name string `json:"name,omitempty"`
 
 	// Kind of the issuer.
 	// +kubebuilder:default=Issuer
@@ -95,10 +96,20 @@ type BootstrapParameters struct {
 	Backup *BootstrapBackup `json:"backup,omitempty"`
 }
 
+// BackupName returns the name of the backup the instance is restored from,
+// empty when it starts empty. Forms submit the empty field as an empty name.
+func (p Parameters) BackupName() string {
+	if p.Bootstrap == nil || p.Bootstrap.Backup == nil {
+		return ""
+	}
+	return p.Bootstrap.Backup.Name
+}
+
 // BootstrapBackup names the backup a new instance is restored from.
 type BootstrapBackup struct {
 	// Name of a completed documentdb.io Backup in the instance namespace.
-	// +kubebuilder:validation:MinLength=1
+	// Without a name the instance starts empty.
 	// +kubebuilder:validation:MaxLength=253
-	Name string `json:"name"`
+	// +optional
+	Name string `json:"name,omitempty"`
 }
