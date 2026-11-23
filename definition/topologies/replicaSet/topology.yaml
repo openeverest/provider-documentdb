@@ -87,39 +87,37 @@ ui:
               uiType: group
               groupType: line
               components:
+                # Quantity fields hold a number in the field's unit and write a
+                # Kubernetes quantity string, so fractions of a CPU are valid.
                 cpu:
                   path: "spec.components.engine.resources.limits.cpu"
-                  uiType: number
+                  uiType: quantity
                   fieldParams:
                     label: "CPU"
+                    unitLabel: "CPU"
                     defaultValue: 1
-                    step: 1
                   validation:
-                    # Whole CPUs: the API takes a number field's value as it
-                    # is and rejects a fraction as a quantity.
-                    min: 1
-                    int: true
+                    min: 0.5
+                    # Millicore precision.
+                    multipleOf: 0.001
                     required: true
                 memory:
                   path: "spec.components.engine.resources.limits.memory"
-                  uiType: number
+                  uiType: quantity
                   fieldParams:
                     label: "Memory"
                     defaultValue: 2
-                    step: 0.1
-                    badge: "Gi"
-                    badgeToApi: true
+                    unit: "Gi"
                   validation:
                     min: 1
                     required: true
                 disk:
                   path: "spec.components.engine.storage.size"
-                  uiType: number
+                  uiType: quantity
                   fieldParams:
                     label: "Disk"
                     defaultValue: 25
-                    badge: "Gi"
-                    badgeToApi: true
+                    unit: "Gi"
                   validation:
                     min: 1
                     int: true
@@ -127,7 +125,7 @@ ui:
                     modes:
                       edit:
                         celExpressions:
-                          - celExpr: "spec.components.engine.storage.size >= original.spec.components.engine.storage.size"
+                          - celExpr: "double(spec.components.engine.storage.size) >= double(original.spec.components.engine.storage.size)"
                             message: "Disk size cannot be decreased"
               componentsOrder:
                 - cpu
