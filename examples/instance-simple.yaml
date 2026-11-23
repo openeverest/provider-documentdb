@@ -1,0 +1,13 @@
+# Minimal Instance: three instances with automatic failover, TLS and
+# generated credentials are the defaults.
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: my-database-simple
+spec:
+  providerRef:
+    name: documentdb
+  components:
+    engine:
+      storage:
+        size: 10Gi

@@ -1,0 +1,84 @@
+---
+# Core lifecycle suite. The DocumentDB operator is not installed: the suite
+# plays its part by creating the CloudNativePG Cluster and patching statuses.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: core
+spec:
+  description: |
+    Lifecycle of an Instance: create, simulate operator readiness, update,
+    reject an invalid Instance, and delete.
+
+  catch:
+    - script:
+        content: kubectl -n $NAMESPACE get instance,documentdb,scheduledbackups.documentdb.io,clusters.postgresql.cnpg.io -o yaml
+    - podLogs:
+        namespace: provider-system
+        selector: app.kubernetes.io/name=provider-documentdb
+        tail: 100
+
+  steps:
+    - name: provider-deployed
+      try:
+        - assert:
+            file: 00-assert.yaml
+
+    - name: create-instance
+      try:
+        - apply:
+            file: 10-create-instance.yaml
+        - assert:
+            file: 10-assert.yaml
+
+    # Simulate the operator: the gateway certificate Secret, the Cluster with
+    # every instance ready, then the DocumentDB status, which triggers the
+    # reconcile that reads them.
+    - name: instance-ready
+      try:
+        - apply:
+            file: 11-cluster.yaml
+        - script:
+            content: |
+              set -e
+              kubectl -n $NAMESPACE create secret generic test-instance-gateway-cert-tls \
+                --from-literal=ca.crt=test-ca --from-literal=tls.crt=test --from-literal=tls.key=test
+              kubectl -n $NAMESPACE patch clusters.postgresql.cnpg.io/test-instance --subresource status --type=merge \
+                -p '{"status":{"instances":3,"readyInstances":3,"phase":"Cluster in healthy state"}}'
+              kubectl -n $NAMESPACE patch documentdb/test-instance --subresource status --type=merge \
+                -p '{"status":{"status":"Cluster in healthy state","tls":{"ready":true,"secretName":"test-instance-gateway-cert-tls"}}}'
+        - assert:
+            file: 11-assert.yaml
+
+    - name: update-instance
+      try:
+        - apply:
+            file: 20-update-instance.yaml
+        - assert:
+            file: 20-assert.yaml
+        - error:
+            file: 20-errors.yaml
+
+    - name: reject-invalid-instance
+      try:
+        - script:
+            content: |
+              kubectl -n $NAMESPACE apply -f 30-invalid-instance.yaml 2>&1
+            check:
+              ($error != null): true
+              (contains($stdout, 'spec.components[engine].replicas')): true
+              (contains($stdout, 'spec.components[engine].service.serviceType')): true
+
+    - name: delete-instance
+      try:
+        - delete:
+            ref:
+              apiVersion: core.openeverest.io/v1alpha1
+              kind: Instance
+              name: test-instance
+        - error:
+            resource:
+              apiVersion: documentdb.io/v1
+              kind: DocumentDB
+              metadata:
+                name: test-instance

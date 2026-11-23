@@ -1,0 +1,259 @@
+# Replica set topology definition: one primary and up to two streaming
+# replicas with automatic failover.
+# This file defines both the structural topology and its UI rendering.
+
+config:
+  components:
+    engine:
+      defaults:
+        replicas: 3
+      # Declared fields are the ones the provider renders into the DocumentDB
+      # resource; anything else is rejected rather than silently ignored.
+      supportedFields:
+        required: [storage]
+        properties:
+          version: {}
+          storage: {}
+          # The operator sizes the pod from one CPU and memory envelope and
+          # runs it with requests equal to limits, so only limits are read.
+          resources:
+            properties:
+              limits: {}
+          # The operator runs one to three instances.
+          replicas: {minimum: 1, maximum: 3}
+          schedulingPolicy:
+            properties:
+              nodeSelector: {}
+              tolerations: {}
+              affinity: {}
+          service:
+            properties:
+              serviceType:
+                enum: [ClusterIP, LoadBalancer]
+
+# UI schema: rendering hints for the frontend form.
+# Paths reference fields in the Instance CR spec.
+ui:
+  sections:
+    databaseVersion:
+      label: "Database"
+      description: "Choose the database version and the credentials of its administrator."
+      components:
+        version:
+          uiType: select
+          path: spec.version
+          fieldParams:
+            label: "Database Version"
+            optionsPath: spec.versions
+            optionsPathConfig:
+              labelPath: "name"
+              valuePath: "name"
+          validation:
+            required: true
+        userSecret:
+          uiType: secret
+          path: spec.userSecretRef.name
+          fieldParams:
+            label: "Database user"
+            definition: user
+            helperText: "Leave empty to generate the credentials."
+            modes:
+              edit:
+                readOnly: true
+                helperText: "Set when the database is created."
+      componentsOrder:
+        - version
+        - userSecret
+    resources:
+      label: "Resources"
+      description: "Configure the resources your new database will have access to."
+      components:
+        nodes:
+          uiType: group
+          components:
+            numberOfnodes:
+              path: "spec.components.engine.replicas"
+              uiType: number
+              fieldParams:
+                label: "Number of nodes"
+                defaultValue: 3
+                helperText: "One primary plus replicas. Use 3 for high availability."
+              validation:
+                required: true
+                min: 1
+                max: 3
+                int: true
+            resources:
+              uiType: group
+              groupType: line
+              components:
+                # Quantity fields hold a number in the field's unit and write a
+                # Kubernetes quantity string, so fractions of a CPU are valid.
+                cpu:
+                  path: "spec.components.engine.resources.limits.cpu"
+                  uiType: quantity
+                  fieldParams:
+                    label: "CPU"
+                    unitLabel: "CPU"
+                    defaultValue: 1
+                  validation:
+                    min: 0.5
+                    # Millicore precision.
+                    multipleOf: 0.001
+                    required: true
+                memory:
+                  path: "spec.components.engine.resources.limits.memory"
+                  uiType: quantity
+                  fieldParams:
+                    label: "Memory"
+                    defaultValue: 2
+                    unit: "Gi"
+                  validation:
+                    min: 1
+                    required: true
+                disk:
+                  path: "spec.components.engine.storage.size"
+                  uiType: quantity
+                  fieldParams:
+                    label: "Disk"
+                    defaultValue: 25
+                    unit: "Gi"
+                  validation:
+                    min: 1
+                    int: true
+                    required: true
+                    modes:
+                      edit:
+                        celExpressions:
+                          - celExpr: "double(spec.components.engine.storage.size) >= double(original.spec.components.engine.storage.size)"
+                            message: "Disk size cannot be decreased"
+              componentsOrder:
+                - cpu
+                - memory
+                - disk
+          componentsOrder:
+            - numberOfnodes
+            - resources
+        storageClass:
+          uiType: select
+          path: spec.components.engine.storage.storageClass
+          fieldParams:
+            label: "Storage class"
+            modes:
+              edit:
+                disabled: true
+          dataSource:
+            provider: storageClasses
+      componentsOrder:
+        - nodes
+        - storageClass
+    tls:
+      label: "TLS"
+      description: "Connections to the database are always encrypted. Leave empty to have a self-signed certificate issued for the instance by cert-manager."
+      components:
+        certificateSecretName:
+          uiType: text
+          path: spec.parameters.tls.certificateSecretName
+          fieldParams:
+            label: "Certificate secret"
+            helperText: "Secret with tls.crt and tls.key that clients connect to"
+          validation:
+            celExpressions:
+              - celExpr: "!has(spec.parameters) || !has(spec.parameters.tls) || !has(spec.parameters.tls.certificateSecretName) || spec.parameters.tls.certificateSecretName == '' || !has(spec.parameters.tls.issuer) || !has(spec.parameters.tls.issuer.name) || spec.parameters.tls.issuer.name == ''"
+                message: "Use either a certificate secret or an issuer, not both"
+        issuer:
+          uiType: group
+          groupType: line
+          components:
+            issuerName:
+              uiType: text
+              path: spec.parameters.tls.issuer.name
+              fieldParams:
+                label: "cert-manager issuer"
+                helperText: "Issuer that signs the certificate"
+            issuerKind:
+              uiType: select
+              path: spec.parameters.tls.issuer.kind
+              fieldParams:
+                label: "Issuer kind"
+                defaultValue: "Issuer"
+                options:
+                  - label: "Issuer"
+                    value: "Issuer"
+                  - label: "ClusterIssuer"
+                    value: "ClusterIssuer"
+          componentsOrder:
+            - issuerName
+            - issuerKind
+      componentsOrder:
+        - certificateSecretName
+        - issuer
+    backups:
+      label: "Backups"
+      description: "Backups are volume snapshots of the primary, taken by the DocumentDB operator. They need a CSI driver with snapshot support and a default VolumeSnapshotClass, and stay in this Kubernetes cluster."
+      components:
+        schedule:
+          uiType: text
+          path: spec.parameters.backup.schedule
+          fieldParams:
+            label: "Backup schedule"
+            placeholder: "0 2 * * *"
+            helperText: "Cron expression. Leave empty to take no scheduled backups."
+        retentionDays:
+          uiType: number
+          path: spec.parameters.backup.retentionDays
+          fieldParams:
+            label: "Retention (days)"
+            helperText: "How long backups are kept. 30 days when empty."
+          validation:
+            min: 1
+            max: 365
+            int: true
+        restoreFrom:
+          uiType: text
+          path: spec.parameters.bootstrap.backup.name
+          fieldParams:
+            label: "Restore from backup"
+            helperText: "Name of a completed DocumentDB backup in this namespace to create the database from."
+            modes:
+              edit:
+                disabled: true
+      componentsOrder:
+        - schedule
+        - retentionDays
+        - restoreFrom
+    advanced:
+      label: "Advanced configuration"
+      description: "Configure advanced settings for your database"
+      components:
+        externalAccess:
+          uiType: select
+          path: spec.components.engine.service.serviceType
+          fieldParams:
+            label: "External access"
+            defaultValue: "ClusterIP"
+            options:
+              - label: "ClusterIP"
+                value: "ClusterIP"
+              - label: "LoadBalancer"
+                value: "LoadBalancer"
+        podSchedulingPolicy:
+          uiType: group
+          groupType: bordered
+          label: "Pod scheduling policy"
+          description: "Control how database pods are scheduled onto nodes using affinity rules. Rules replace the default, which prefers a different node for each instance."
+          components:
+            policy:
+              uiType: widget
+              widgetType: podSchedulingPolicy
+          componentsOrder:
+            - policy
+      componentsOrder:
+        - externalAccess
+        - podSchedulingPolicy
+  sectionsOrder:
+    - databaseVersion
+    - resources
+    - tls
+    - backups
+    - advanced

@@ -1,0 +1,26 @@
+---
+# Dependabot opens a PR when a new operator release is available. The operator
+# is pinned twice: as a Helm subchart (charts/provider-documentdb/Chart.yaml),
+# which Dependabot bumps, and as a Go module (its API types, in go.mod).
+version: 2
+
+multi-ecosystem-groups:
+  operator:
+    schedule:
+      interval: "daily"
+    labels:
+      - "dependencies"
+
+updates:
+  # The operator's Go module is not published under its repository path, so
+  # go.mod pins it with a replace directive that Dependabot cannot bump: when
+  # the chart PR arrives, move the replace to the commit of the same release
+  # and DOCUMENTDB_OPERATOR_VERSION and CNPG_VERSION in the Makefile with it.
+
+  # The chart's only dependencies are expected to be operator charts. Replace
+  # "*" with the chart name if you add unrelated subcharts.
+  - package-ecosystem: "helm"
+    directory: "/charts/provider-documentdb"
+    patterns:
+      - "*"
+    multi-ecosystem-group: "operator"

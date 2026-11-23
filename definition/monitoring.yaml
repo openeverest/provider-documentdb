@@ -1,0 +1,12 @@
+# Monitoring contract, published by `provider-sdk generate` as
+# Provider.spec.monitoring.
+#
+# While a monitoring destination requires metrics, the provider turns on the
+# operator's OpenTelemetry Collector sidecar, which serves the DocumentDB
+# metrics on port 9188. Adding the sidecar restarts the pods one at a time,
+# hence Exporter. Every pod also serves the PostgreSQL metrics of the
+# CloudNativePG instance manager (port 9187), which are published as well.
+
+componentTypes:
+  documentdb:
+    metrics: Exporter

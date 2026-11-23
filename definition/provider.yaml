@@ -1,0 +1,25 @@
+# Provider identity and component definitions.
+# This file defines the provider name and maps logical component names
+# to their component types (defined in versions.yaml).
+
+# The name of the Provider CR this repository ships, and the value users put in
+# spec.providerRef.name on an Instance. Keep it in sync with
+# common.ProviderName and the chart's provider.name value.
+name: documentdb
+
+# Instance-wide parameters (Instance.spec.parameters), a Go type in
+# definition/types.go.
+parametersSchema: Parameters
+
+# A DocumentDB pod runs PostgreSQL with the DocumentDB extension and the
+# gateway that speaks the MongoDB wire protocol. The operator sizes and
+# versions them together, so they are one component.
+components:
+  engine:
+    type: documentdb
+
+# The kind of the software each type runs, published as
+# Provider.spec.componentTypes.<type>.kind and matched by monitoring classes.
+componentTypes:
+  documentdb:
+    kind: documentdb

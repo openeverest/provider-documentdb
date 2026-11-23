@@ -1,0 +1,16 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: example
+spec:
+  providerRef:
+    name: documentdb
+  topology:
+    type: replicaSet
+  components:
+    engine:
+      resources:
+        requests:
+          cpu: "1"
+      storage:
+        size: 10Gi

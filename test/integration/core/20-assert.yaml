@@ -1,0 +1,29 @@
+apiVersion: documentdb.io/v1
+kind: DocumentDB
+metadata:
+  name: test-instance
+spec:
+  instancesPerNode: 2
+  resource:
+    cpu: "2"
+    memory: 4Gi
+    storage:
+      pvcSize: 20Gi
+  exposeViaService:
+    serviceType: LoadBalancer
+  tls:
+    gateway:
+      mode: CertManager
+      certManager:
+        issuerRef:
+          name: my-issuer
+          kind: ClusterIssuer
+          group: cert-manager.io
+---
+# The operator has not scaled the cluster yet: 3 instances are ready, 2 asked.
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: test-instance
+status:
+  (conditions[?type == 'Ready'].status | [0]): "False"
