@@ -21,7 +21,7 @@ spec:
   parameters:
     # Chainsaw patches the Instance: null removes the schedule and retention.
     backup: null
+    # Names can change after creation; the certificate source cannot.
     tls:
-      issuer:
-        name: my-issuer
-        kind: ClusterIssuer
+      additionalNames:
+        - test-instance.example.com

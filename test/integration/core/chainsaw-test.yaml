@@ -8,7 +8,8 @@ metadata:
 spec:
   description: |
     Lifecycle of an Instance: create, simulate operator readiness, update,
-    reject an invalid Instance, and delete.
+    reject an invalid Instance and a change of the certificate source, and
+    delete.
 
   catch:
     - script:
@@ -68,6 +69,14 @@ spec:
               ($error != null): true
               (contains($stdout, 'spec.components[engine].replicas')): true
               (contains($stdout, 'spec.components[engine].service.serviceType')): true
+        # The certificate source is set when the instance is created.
+        - script:
+            content: |
+              kubectl -n $NAMESPACE patch instance test-instance --type=merge \
+                -p '{"spec":{"parameters":{"tls":{"issuer":{"name":"my-issuer","kind":"ClusterIssuer"}}}}}' 2>&1
+            check:
+              ($error != null): true
+              (contains($stdout, 'issuer can only be set when the instance is created')): true
 
     - name: delete-instance
       try:
