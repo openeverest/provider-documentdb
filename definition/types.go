@@ -30,12 +30,16 @@ type Parameters struct {
 // TLSParameters configures the gateway certificate. It comes from, in order
 // of precedence: the certificate secret, the cert-manager issuer, or else a
 // self-signed issuer the operator creates for the instance with cert-manager.
+// The certificate secret and the issuer can only be set when the instance is
+// created.
 //
-// +kubebuilder:validation:XValidation:rule="!(has(self.certificateSecretName) && self.certificateSecretName != '' && has(self.issuer) && has(self.issuer.name) && self.issuer.name != '')",message="set either certificateSecretName or issuer, not both"
+// +kubebuilder:validation:XValidation:rule="!(has(self.certificateSecretName) && size(self.certificateSecretName) > 0 && has(self.issuer) && has(self.issuer.name) && size(self.issuer.name) > 0)",message="set either certificateSecretName or issuer, not both"
+// +kubebuilder:validation:XValidation:rule="!(has(self.certificateSecretName) && size(self.certificateSecretName) > 0 && has(self.additionalNames) && size(self.additionalNames) > 0)",message="additionalNames cannot be combined with certificateSecretName, whose certificate carries its own names"
 type TLSParameters struct {
 	// CertificateSecretName names a Secret in the instance namespace with
 	// the certificate clients connect to: tls.crt and tls.key, and ca.crt
-	// when clients should receive the CA.
+	// when clients should receive the CA. Cannot be combined with issuer or
+	// additionalNames.
 	// +kubebuilder:validation:MaxLength=253
 	// +optional
 	CertificateSecretName string `json:"certificateSecretName,omitempty"`
@@ -44,10 +48,18 @@ type TLSParameters struct {
 	// ignored without a name.
 	// +optional
 	Issuer *IssuerReference `json:"issuer,omitempty"`
+
+	// AdditionalNames are DNS names the certificate is valid for besides
+	// those of the gateway Service, such as an external name clients connect
+	// to. Used with issuer or the self-signed certificate. Changing them
+	// reissues the certificate, which the gateway loads without a restart.
+	// +kubebuilder:validation:MaxItems=64
+	// +kubebuilder:validation:items:MaxLength=253
+	// +optional
+	AdditionalNames []string `json:"additionalNames,omitempty"`
 }
 
 // IssuerKind is the kind of a cert-manager issuer.
-// +kubebuilder:validation:Enum=Issuer;ClusterIssuer
 type IssuerKind string
 
 const (
@@ -57,6 +69,9 @@ const (
 	IssuerKindClusterIssuer IssuerKind = "ClusterIssuer"
 )
 
+// CertManagerGroup is the API group of cert-manager's own issuers.
+const CertManagerGroup = "cert-manager.io"
+
 // IssuerReference refers to a cert-manager issuer.
 type IssuerReference struct {
 	// Name of the issuer.
@@ -64,10 +79,19 @@ type IssuerReference struct {
 	// +optional
 	Name string `json:"name,omitempty"`
 
-	// Kind of the issuer.
+	// Kind of the issuer: Issuer or ClusterIssuer, or the kind of an
+	// external issuer of group.
 	// +kubebuilder:default=Issuer
+	// +kubebuilder:validation:MaxLength=63
 	// +optional
 	Kind IssuerKind `json:"kind,omitempty"`
+
+	// Group is the API group of the issuer: cert-manager.io, or that of an
+	// external issuer such as awspca.cert-manager.io.
+	// +kubebuilder:default=cert-manager.io
+	// +kubebuilder:validation:MaxLength=253
+	// +optional
+	Group string `json:"group,omitempty"`
 }
 
 // BackupParameters configures the backups the DocumentDB operator takes as

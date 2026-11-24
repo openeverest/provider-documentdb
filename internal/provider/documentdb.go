@@ -21,12 +21,6 @@ const (
 	// the binary, so changing the Instance version is the whole upgrade.
 	schemaVersionAuto = "auto"
 
-	tlsModeSelfSigned  = "SelfSigned"
-	tlsModeCertManager = "CertManager"
-	tlsModeProvided    = "Provided"
-
-	certManagerGroup = "cert-manager.io"
-
 	reclaimPolicyDelete = "Delete"
 )
 
@@ -56,8 +50,10 @@ func buildDocumentDB(
 			Resource:                   buildResource(engine),
 			ExposeViaService:           dbv1.ExposeViaService{ServiceType: string(serviceType(engine))},
 			Affinity:                   buildAffinity(engine),
-			TLS:                        &dbv1.TLSConfiguration{Gateway: buildGatewayTLS(params.TLS)},
-			Monitoring:                 monitoring,
+			TLS: &dbv1.TLSConfiguration{
+				Gateway: buildGatewayTLS(params.TLS, gatewayDNSNames(c.Name(), c.Namespace())),
+			},
+			Monitoring: monitoring,
 		},
 	}
 
@@ -135,31 +131,4 @@ func buildAffinity(engine corev1alpha1.ComponentSpec) cnpgv1.AffinityConfigurati
 		affinity.AdditionalPodAntiAffinity = policy.Affinity.PodAntiAffinity
 	}
 	return affinity
-}
-
-// buildGatewayTLS chooses where the gateway certificate comes from. The
-// gateway only accepts TLS connections whichever mode is chosen.
-func buildGatewayTLS(tls *definition.TLSParameters) *dbv1.GatewayTLS {
-	switch {
-	case tls != nil && tls.CertificateSecretName != "":
-		return &dbv1.GatewayTLS{
-			Mode:     tlsModeProvided,
-			Provided: &dbv1.ProvidedTLS{SecretName: tls.CertificateSecretName},
-		}
-	// The UI submits the issuer kind's default on its own: an issuer without
-	// a name is none.
-	case tls != nil && tls.Issuer != nil && tls.Issuer.Name != "":
-		kind := tls.Issuer.Kind
-		if kind == "" {
-			kind = definition.IssuerKindIssuer
-		}
-		return &dbv1.GatewayTLS{
-			Mode: tlsModeCertManager,
-			CertManager: &dbv1.CertManagerTLS{
-				IssuerRef: dbv1.IssuerRef{Name: tls.Issuer.Name, Kind: string(kind), Group: certManagerGroup},
-			},
-		}
-	default:
-		return &dbv1.GatewayTLS{Mode: tlsModeSelfSigned}
-	}
 }

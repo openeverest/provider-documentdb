@@ -11,14 +11,11 @@ spec:
       pvcSize: 20Gi
   exposeViaService:
     serviceType: LoadBalancer
+  # The provider adds the names to the self-signed Certificate the operator
+  # creates; the DocumentDB keeps the mode it was created with.
   tls:
     gateway:
-      mode: CertManager
-      certManager:
-        issuerRef:
-          name: my-issuer
-          kind: ClusterIssuer
-          group: cert-manager.io
+      mode: SelfSigned
 ---
 # The operator has not scaled the cluster yet: 3 instances are ready, 2 asked.
 apiVersion: core.openeverest.io/v1alpha1

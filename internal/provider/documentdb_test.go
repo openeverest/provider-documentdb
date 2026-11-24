@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	dbv1 "github.com/documentdb/documentdb-operator/api/v1"
@@ -69,6 +70,11 @@ func TestBuildDocumentDBFull(t *testing.T) {
 		Mode: "CertManager",
 		CertManager: &dbv1.CertManagerTLS{
 			IssuerRef: dbv1.IssuerRef{Name: "my-issuer", Kind: "ClusterIssuer", Group: "cert-manager.io"},
+			// The Service names go along, as dnsNames replaces them.
+			DNSNames: []string{
+				"documentdb-service-example", "documentdb-service-example.ns", "documentdb-service-example.ns.svc",
+				"db.example.com",
+			},
 		},
 	}, db.Spec.TLS.Gateway)
 	require.NotNil(t, db.Spec.Backup)
@@ -80,17 +86,32 @@ func TestBuildDocumentDBFull(t *testing.T) {
 
 func TestBuildGatewayTLS(t *testing.T) {
 	t.Parallel()
+	services := gatewayDNSNames("db", "ns")
 
-	provided := buildGatewayTLS(&definition.TLSParameters{CertificateSecretName: "cert"})
+	provided := buildGatewayTLS(&definition.TLSParameters{CertificateSecretName: "cert"}, services)
 	assert.Equal(t, &dbv1.GatewayTLS{Mode: "Provided", Provided: &dbv1.ProvidedTLS{SecretName: "cert"}}, provided)
 
-	// The issuer kind defaults to a namespaced Issuer.
-	issued := buildGatewayTLS(&definition.TLSParameters{Issuer: &definition.IssuerReference{Name: "ca"}})
-	assert.Equal(t, "Issuer", issued.CertManager.IssuerRef.Kind)
+	// The issuer kind and group default to a namespaced cert-manager Issuer,
+	// and the operator chooses the names without additional ones.
+	issued := buildGatewayTLS(&definition.TLSParameters{Issuer: &definition.IssuerReference{Name: "ca"}}, services)
+	assert.Equal(t, &dbv1.CertManagerTLS{IssuerRef: dbv1.IssuerRef{Name: "ca", Kind: "Issuer", Group: "cert-manager.io"}},
+		issued.CertManager)
 
-	assert.Equal(t, "SelfSigned", buildGatewayTLS(&definition.TLSParameters{}).Mode)
+	external := buildGatewayTLS(&definition.TLSParameters{
+		Issuer:          &definition.IssuerReference{Name: "pca", Kind: "AWSPCAClusterIssuer", Group: "awspca.cert-manager.io"},
+		AdditionalNames: []string{"db.example.com", "documentdb-service-db.ns.svc"},
+	}, services)
+	assert.Equal(t, dbv1.IssuerRef{Name: "pca", Kind: "AWSPCAClusterIssuer", Group: "awspca.cert-manager.io"},
+		external.CertManager.IssuerRef)
+	assert.Equal(t, append(slices.Clone(services), "db.example.com"), external.CertManager.DNSNames)
+
+	assert.Equal(t, "SelfSigned", buildGatewayTLS(&definition.TLSParameters{}, services).Mode)
 	// The UI submits the default issuer kind without a name.
-	assert.Equal(t, "SelfSigned", buildGatewayTLS(&definition.TLSParameters{Issuer: &definition.IssuerReference{Kind: "Issuer"}}).Mode)
+	assert.Equal(t, "SelfSigned",
+		buildGatewayTLS(&definition.TLSParameters{Issuer: &definition.IssuerReference{Kind: "Issuer"}}, services).Mode)
+	// The provider adds the names to the operator's self-signed certificate.
+	assert.Equal(t, &dbv1.GatewayTLS{Mode: "SelfSigned"},
+		buildGatewayTLS(&definition.TLSParameters{AdditionalNames: []string{"db.example.com"}}, services))
 }
 
 func TestBuildAffinityReplacesDefault(t *testing.T) {

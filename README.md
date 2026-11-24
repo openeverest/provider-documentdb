@@ -177,13 +177,64 @@ The gateway only accepts TLS connections. `spec.parameters.tls` chooses the cert
 | Setting | Certificate |
 |---|---|
 | none | Issued by a self-signed issuer the operator creates for the instance with cert-manager |
-| `issuer: {name, kind}` | Issued by your cert-manager `Issuer` or `ClusterIssuer` |
-| `certificateSecretName` | The `tls.crt` and `tls.key` of your Secret |
+| `issuer: {name, kind, group}` | Issued by your cert-manager `Issuer` or `ClusterIssuer` (`kind` defaults to `Issuer`), or by an external issuer of `group`, such as `awspca.cert-manager.io` |
+| `certificateSecretName` | The `tls.crt` and `tls.key` of your Secret, and its `ca.crt` for clients |
 
 Issued certificates cover the names of the gateway Service
-(`documentdb-service-<instance>.<namespace>.svc`). A `LoadBalancer` address is not among
-them: connect through it with `tlsAllowInvalidHostnames=true`, or provide a certificate
-for your own DNS name.
+(`documentdb-service-<instance>`, `.<namespace>` and `.<namespace>.svc`) and
+`additionalNames`, the DNS names clients reach the instance at otherwise, such as that of a
+`LoadBalancer`. Without one of them, connect through a `LoadBalancer` address with
+`tlsAllowInvalidHostnames=true`. `additionalNames` can't be combined with
+`certificateSecretName`, whose certificate carries its own names, and must be DNS names,
+not IP addresses.
+
+`certificateSecretName` and `issuer` can only be set when the instance is created.
+`additionalNames` can be changed at any time: cert-manager reissues the certificate and
+the gateway loads it without a restart, within a couple of minutes, once the kubelet has
+updated the mounted Secret. The `ca.crt` of the connection Secret follows the
+certificate. The UI sets the issuer and the certificate Secret; `additionalNames` is set
+in YAML or through the API.
+
+#### Bring your own CA
+
+To have clients verify `mydb.company.com` against your company CA:
+
+1. Give cert-manager the CA, for example as a `ClusterIssuer` of the CA's key pair:
+
+   ```bash
+   kubectl -n cert-manager create secret tls company-ca --cert=ca.crt --key=ca.key
+   kubectl apply -f - <<'YAML'
+   apiVersion: cert-manager.io/v1
+   kind: ClusterIssuer
+   metadata:
+     name: company-ca
+   spec:
+     ca:
+       secretName: company-ca
+   YAML
+   ```
+
+2. Create the instance with it:
+
+   ```yaml
+   spec:
+     parameters:
+       tls:
+         issuer:
+           name: company-ca
+           kind: ClusterIssuer
+         additionalNames:
+           - mydb.company.com
+   ```
+
+3. Point `mydb.company.com` at the gateway: a `LoadBalancer` address
+   (`spec.components.engine.service.serviceType: LoadBalancer`), or your ingress. Clients
+   then verify the certificate with the company CA, also in the connection Secret's `ca.crt`:
+
+   ```bash
+   mongosh "mongodb://<user>:<password>@mydb.company.com:10260/?tls=true&directConnection=true&authMechanism=SCRAM-SHA-256" \
+     --tlsCAFile company-ca.crt
+   ```
 
 ### Monitoring
 

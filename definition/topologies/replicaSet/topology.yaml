@@ -149,14 +149,17 @@ ui:
         - storageClass
     tls:
       label: "TLS"
-      description: "Connections to the database are always encrypted. Leave empty to have a self-signed certificate issued for the instance by cert-manager."
+      description: "Connections to the database are always encrypted. Leave empty to have a self-signed certificate issued for the instance by cert-manager. Clients verify the gateway with the CA certificate the connection Secret holds as ca.crt. The certificate secret and the issuer can't be changed after the instance is created."
       components:
         certificateSecretName:
           uiType: text
           path: spec.parameters.tls.certificateSecretName
           fieldParams:
             label: "Certificate secret"
-            helperText: "Secret with tls.crt and tls.key that clients connect to"
+            helperText: "Secret with tls.crt and tls.key that clients connect to, and ca.crt to publish to them"
+            modes:
+              edit:
+                disabled: true
           validation:
             celExpressions:
               - celExpr: "!has(spec.parameters) || !has(spec.parameters.tls) || !has(spec.parameters.tls.certificateSecretName) || spec.parameters.tls.certificateSecretName == '' || !has(spec.parameters.tls.issuer) || !has(spec.parameters.tls.issuer.name) || spec.parameters.tls.issuer.name == ''"
@@ -171,6 +174,9 @@ ui:
               fieldParams:
                 label: "cert-manager issuer"
                 helperText: "Issuer that signs the certificate"
+                modes:
+                  edit:
+                    disabled: true
             issuerKind:
               uiType: select
               path: spec.parameters.tls.issuer.kind
@@ -182,6 +188,9 @@ ui:
                     value: "Issuer"
                   - label: "ClusterIssuer"
                     value: "ClusterIssuer"
+                modes:
+                  edit:
+                    disabled: true
           componentsOrder:
             - issuerName
             - issuerKind

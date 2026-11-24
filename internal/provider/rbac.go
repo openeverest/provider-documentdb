@@ -28,6 +28,10 @@ package provider
 // instances and labelled so its pods inherit the OpenEverest labels.
 // +kubebuilder:rbac:groups=postgresql.cnpg.io,resources=clusters,verbs=get;list;watch;patch
 
+// The provider keeps the names of the gateway certificate the operator
+// requests up to date with spec.parameters.tls.additionalNames.
+// +kubebuilder:rbac:groups=cert-manager.io,resources=certificates,verbs=get;patch
+
 // The gateway Service carries the load balancer address.
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch
 // The runtime counts the labelled pods into status.components.
