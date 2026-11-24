@@ -28,6 +28,8 @@ spec:
       issuer:
         name: my-issuer
         kind: ClusterIssuer
+      additionalNames:
+        - db.example.com
     backup:
       schedule: "0 2 * * *"
       retentionDays: 7

@@ -69,6 +69,7 @@ func enqueueDocumentDBOwner(_ context.Context, obj client.Object) []reconcile.Re
 
 // Sync renders the Instance into the operator's resources: the credentials
 // Secret, the DocumentDB and, when backups are scheduled, a ScheduledBackup.
+// It keeps the names of the gateway certificate up to date.
 func (p *Provider) Sync(c *controller.Context) error {
 	params := decodeParameters(c)
 
@@ -90,7 +91,11 @@ func (p *Provider) Sync(c *controller.Context) error {
 		return err
 	}
 
-	return labelPods(c)
+	if err := labelPods(c); err != nil {
+		return err
+	}
+
+	return syncCertificateNames(c, params.TLS)
 }
 
 // Cleanup deletes the DocumentDB and, once it is gone, the gateway

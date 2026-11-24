@@ -1,0 +1,26 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: example
+spec:
+  providerRef:
+    name: documentdb
+  topology:
+    type: replicaSet
+  components:
+    engine:
+      replicas: 3
+      resources:
+        limits:
+          cpu: "1"
+          memory: 2Gi
+      storage:
+        size: 10Gi
+  parameters:
+    tls:
+      issuer:
+        name: my-issuer
+        kind: Vault
+      additionalNames:
+        - 10.0.0.1
+        - Not_A_Name

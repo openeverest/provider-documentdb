@@ -32,6 +32,9 @@ spec:
       issuer:
         name: my-ca-issuer
         kind: ClusterIssuer
+      # DNS names clients use besides the gateway Service's
+      additionalNames:
+        - example-instance.example.com
     backup:
       schedule: "0 2 * * *"
       retentionDays: 14

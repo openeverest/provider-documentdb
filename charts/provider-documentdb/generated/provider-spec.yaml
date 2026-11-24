@@ -63,11 +63,23 @@ spec:
             TLS configures the certificate clients connect to. Connections are
             always encrypted; this only chooses where the certificate comes from.
           properties:
+            additionalNames:
+              description: |-
+                AdditionalNames are DNS names the certificate is valid for besides
+                those of the gateway Service, such as an external name clients connect
+                to. Used with issuer or the self-signed certificate. Changing them
+                reissues the certificate, which the gateway loads without a restart.
+              items:
+                maxLength: 253
+                type: string
+              maxItems: 64
+              type: array
             certificateSecretName:
               description: |-
                 CertificateSecretName names a Secret in the instance namespace with
                 the certificate clients connect to: tls.crt and tls.key, and ca.crt
-                when clients should receive the CA.
+                when clients should receive the CA. Cannot be combined with issuer or
+                additionalNames.
               maxLength: 253
               type: string
             issuer:
@@ -75,12 +87,19 @@ spec:
                 Issuer is the cert-manager issuer that signs the certificate. It is
                 ignored without a name.
               properties:
+                group:
+                  default: cert-manager.io
+                  description: |-
+                    Group is the API group of the issuer: cert-manager.io, or that of an
+                    external issuer such as awspca.cert-manager.io.
+                  maxLength: 253
+                  type: string
                 kind:
                   default: Issuer
-                  description: Kind of the issuer.
-                  enum:
-                    - Issuer
-                    - ClusterIssuer
+                  description: |-
+                    Kind of the issuer: Issuer or ClusterIssuer, or the kind of an
+                    external issuer of group.
+                  maxLength: 63
                   type: string
                 name:
                   description: Name of the issuer.
@@ -90,7 +109,9 @@ spec:
           type: object
           x-kubernetes-validations:
             - message: set either certificateSecretName or issuer, not both
-              rule: '!(has(self.certificateSecretName) && self.certificateSecretName != '''' && has(self.issuer) && has(self.issuer.name) && self.issuer.name != '''')'
+              rule: '!(has(self.certificateSecretName) && size(self.certificateSecretName) > 0 && has(self.issuer) && has(self.issuer.name) && size(self.issuer.name) > 0)'
+            - message: additionalNames cannot be combined with certificateSecretName, whose certificate carries its own names
+              rule: '!(has(self.certificateSecretName) && size(self.certificateSecretName) > 0 && has(self.additionalNames) && size(self.additionalNames) > 0)'
       type: object
   release:
     version: 0.1.0
@@ -345,8 +366,11 @@ spec:
           components:
             certificateSecretName:
               fieldParams:
-                helperText: Secret with tls.crt and tls.key that clients connect to
+                helperText: Secret with tls.crt and tls.key that clients connect to, and ca.crt to publish to them
                 label: Certificate secret
+                modes:
+                  edit:
+                    disabled: true
               path: spec.parameters.tls.certificateSecretName
               uiType: text
               validation:
@@ -359,6 +383,9 @@ spec:
                   fieldParams:
                     defaultValue: Issuer
                     label: Issuer kind
+                    modes:
+                      edit:
+                        disabled: true
                     options:
                       - label: Issuer
                         value: Issuer
@@ -370,6 +397,9 @@ spec:
                   fieldParams:
                     helperText: Issuer that signs the certificate
                     label: cert-manager issuer
+                    modes:
+                      edit:
+                        disabled: true
                   path: spec.parameters.tls.issuer.name
                   uiType: text
               componentsOrder:
@@ -380,7 +410,7 @@ spec:
           componentsOrder:
             - certificateSecretName
             - issuer
-          description: Connections to the database are always encrypted. Leave empty to have a self-signed certificate issued for the instance by cert-manager.
+          description: Connections to the database are always encrypted. Leave empty to have a self-signed certificate issued for the instance by cert-manager. Clients verify the gateway with the CA certificate the connection Secret holds as ca.crt. The certificate secret and the issuer can't be changed after the instance is created.
           label: TLS
       sectionsOrder:
         - databaseVersion

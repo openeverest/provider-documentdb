@@ -36,6 +36,13 @@
     - create
     - patch
 - apiGroups:
+    - cert-manager.io
+  resources:
+    - certificates
+  verbs:
+    - get
+    - patch
+- apiGroups:
     - coordination.k8s.io
   resources:
     - leases

@@ -59,6 +59,8 @@ func (p *Provider) Validate(in controller.ValidationInput) controller.Validation
 		}
 	}
 
+	errs = append(errs, validateTLS(params.TLS)...)
+
 	if in.Old != nil {
 		errs = append(errs, validateUpdate(in.Instance, in.Old, params)...)
 	}
@@ -118,9 +120,12 @@ func validateUpdate(in, old *corev1alpha1.Instance, params definition.Parameters
 	spec := field.NewPath("spec")
 
 	oldParams, err := parametersOf(old)
-	if err == nil && params.BackupName() != oldParams.BackupName() {
-		errs = append(errs, field.Forbidden(spec.Child("parameters", "bootstrap"),
-			"can only be set when the instance is created"))
+	if err == nil {
+		if params.BackupName() != oldParams.BackupName() {
+			errs = append(errs, field.Forbidden(spec.Child("parameters", "bootstrap"),
+				"can only be set when the instance is created"))
+		}
+		errs = append(errs, validateTLSUpdate(params.TLS, oldParams.TLS)...)
 	}
 
 	// Core lets an unset userSecretRef be set later, but the gateway creates
