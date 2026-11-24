@@ -190,7 +190,8 @@ not IP addresses.
 
 `certificateSecretName` and `issuer` can only be set when the instance is created.
 `additionalNames` can be changed at any time: cert-manager reissues the certificate and
-the gateway loads it without a restart. The `ca.crt` of the connection Secret follows the
+the gateway loads it without a restart, within a couple of minutes, once the kubelet has
+updated the mounted Secret. The `ca.crt` of the connection Secret follows the
 certificate. The UI sets the issuer and the certificate Secret; `additionalNames` is set
 in YAML or through the API.
 
