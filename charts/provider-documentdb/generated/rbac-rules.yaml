@@ -44,6 +44,12 @@
     - create
     - patch
 - apiGroups:
+    - apps
+  resources:
+    - deployments
+  verbs:
+    - list
+- apiGroups:
     - cert-manager.io
   resources:
     - certificates
@@ -94,6 +100,13 @@
     - get
     - list
     - watch
+- apiGroups:
+    - core.openeverest.io
+  resources:
+    - providers/status
+  verbs:
+    - get
+    - patch
 - apiGroups:
     - documentdb.io
   resources:
