@@ -1,0 +1,20 @@
+# The new CPU and memory roll the pods: they wait for approval and the
+# DocumentDB keeps the current ones.
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: docdb
+status:
+  (conditions[?type == 'MaintenancePending'].status | [0]): "True"
+  (length(pendingMaintenance)): 1
+  (pendingMaintenance[0].severity): RollingRestart
+  (starts_with(pendingMaintenance[0].approvalToken, 'resources-')): true
+---
+apiVersion: documentdb.io/v1
+kind: DocumentDB
+metadata:
+  name: docdb
+spec:
+  resource:
+    cpu: 400m
+    memory: 1Gi

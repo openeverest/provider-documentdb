@@ -1,3 +1,5 @@
+# Replicas, storage and the Service type apply at once; the new CPU and memory
+# roll the pods and wait for approval.
 apiVersion: documentdb.io/v1
 kind: DocumentDB
 metadata:
@@ -5,8 +7,8 @@ metadata:
 spec:
   instancesPerNode: 2
   resource:
-    cpu: "2"
-    memory: 4Gi
+    cpu: "1"
+    memory: 2Gi
     storage:
       pvcSize: 20Gi
   exposeViaService:
@@ -24,3 +26,7 @@ metadata:
   name: test-instance
 status:
   (conditions[?type == 'Ready'].status | [0]): "False"
+  (conditions[?type == 'MaintenancePending'].status | [0]): "True"
+  (length(pendingMaintenance)): 1
+  (pendingMaintenance[0].severity): RollingRestart
+  (starts_with(pendingMaintenance[0].approvalToken, 'resources-')): true

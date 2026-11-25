@@ -6,7 +6,7 @@ spec:
   description: |
     Lifecycle of an Instance on the real DocumentDB operator, checked by a
     mongosh client with the connection Secret: create on 1.0.0 with the default
-    TLS, write and read data, scale 1 -> 3, grow storage, change resources,
+    TLS, write and read data, scale 1 -> 3, grow storage, change resources once approved,
     upgrade to 1.0.1, scale 3 -> 1, expose through a LoadBalancer and back,
     delete.
     The data must survive every step. Runs in the image mode the operator
@@ -136,6 +136,19 @@ spec:
                       limits:
                         cpu: 600m
                         memory: 1536Mi
+        - assert:
+            file: 35-assert.yaml
+        - script:
+            content: |
+              set -eu
+              # Held: no pod restarted.
+              cpus=$(kubectl -n $NAMESPACE get pods -l cnpg.io/cluster=docdb,cnpg.io/podRole=instance \
+                -o jsonpath='{range .items[*]}{.spec.containers[?(@.name=="postgres")].resources.limits.cpu} {end}')
+              echo "postgres CPU limits: $cpus"
+              test "$cpus" = "400m 400m 400m "
+              token=$(kubectl -n $NAMESPACE get instance docdb -o jsonpath='{.status.pendingMaintenance[0].approvalToken}')
+              kubectl -n $NAMESPACE patch instance docdb --type=merge \
+                -p "{\"spec\":{\"maintenance\":{\"approved\":\"$token\"}}}"
         - assert:
             timeout: 10m
             file: 40-assert.yaml

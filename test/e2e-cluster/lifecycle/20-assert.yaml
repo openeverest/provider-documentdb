@@ -7,6 +7,8 @@ status:
   phase: Provisioned
   (conditions[?type == 'Ready'].status | [0]): "True"
   (components[?name == 'engine'] | [0].readyReplicas): 3
+  # Scaling and storage growth do not restart pods: nothing waits for approval.
+  (length(pendingMaintenance || `[]`)): 0
 ---
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster

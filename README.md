@@ -62,9 +62,10 @@ provider itself is covered under [Installation](#installation).
 |---|---|---|
 | Provisioning | ✅ | One topology, `replicaSet`: a primary and up to two streaming replicas |
 | Horizontal scaling | ✅ | 1 to 3 instances. 3 is the default; a replica is promoted when the primary fails |
-| Vertical scaling (CPU / memory) | ✅ | `resources.limits` is the pod's envelope; the operator splits it between PostgreSQL and the gateway and runs them with requests equal to limits |
+| Vertical scaling (CPU / memory) | ✅ | `resources.limits` is the pod's envelope; the operator splits it between PostgreSQL and the gateway and runs them with requests equal to limits. Rolling restart: waits for [maintenance approval](#maintenance) |
 | Version upgrades | ✅ | Change `spec.version`; the extension schema follows the binary (`schemaVersion: auto`). Downgrades are refused by the operator |
-| Monitoring | ✅ | Prometheus metrics for ExtensionManaged monitoring classes, see [Monitoring](#monitoring) |
+| Monitoring | ✅ | Prometheus metrics for ExtensionManaged monitoring classes, see [Monitoring](#monitoring). Adding the first destination or removing the last one rolls the pods and waits for [maintenance approval](#maintenance) |
+| Scheduling policy | ✅ | `schedulingPolicy`: node selector, tolerations and affinity. Rolling restart: waits for [maintenance approval](#maintenance) |
 | TLS | ✅ | Always on: the gateway refuses unencrypted connections. See [TLS](#tls) |
 
 Stateful workloads additionally report:
@@ -245,7 +246,37 @@ Add a `MonitoringDestination` of an ExtensionManaged class (for example
 - port `metrics` (9187): PostgreSQL metrics of the CloudNativePG instance manager;
 - port `prom-metrics` (9188): the DocumentDB metrics of the operator's OpenTelemetry
   Collector sidecar. The provider adds the sidecar while a destination requires metrics,
-  which restarts the pods one at a time.
+  which restarts the pods one at a time, so adding or removing it waits for
+  [maintenance approval](#maintenance).
+
+### Maintenance
+
+Changes that restart the pods are held until you approve them. The
+DocumentDB keeps running with the current settings, the Instance reports
+`MaintenancePending` and lists the change in `status.pendingMaintenance`:
+
+| Change | Impact |
+|---|---|
+| CPU or memory (`resources.limits`) | Rolling restart |
+| Scheduling policy (`schedulingPolicy`) | Rolling restart |
+| Adding the first or removing the last metrics destination (collector sidecar) | Rolling restart |
+
+Everything else applies at once: replicas, storage growth, backups, the Service type and
+`tls.additionalNames` (the gateway reloads the certificate). The certificate source cannot be
+changed after creation.
+
+Approve one change by copying its token, or approve every rolling restart for the instance:
+
+```bash
+kubectl get instance my-instance -o jsonpath='{.status.pendingMaintenance}'
+kubectl patch instance my-instance --type=merge \
+  -p '{"spec":{"maintenance":{"approved":"<approvalToken>"}}}'
+# or, standing approval:
+kubectl patch instance my-instance --type=merge \
+  -p '{"spec":{"maintenance":{"autoApproveUpTo":"RollingRestart"}}}'
+```
+
+The token names one change: changing the same setting again needs a new approval.
 
 ### Backups and restores
 
