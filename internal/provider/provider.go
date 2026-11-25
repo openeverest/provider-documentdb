@@ -8,6 +8,7 @@ import (
 
 	cnpgv1 "github.com/cloudnative-pg/cloudnative-pg/api/v1"
 	dbv1 "github.com/documentdb/documentdb-operator/api/v1"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -45,6 +46,8 @@ func New() *Provider {
 				cnpgv1.AddToScheme,
 				// Sync lists MonitoringBindings.
 				monitoringv1alpha1.SchemeBuilder.AddToScheme,
+				// The CloudNativePG check reads the operator's Deployment.
+				appsv1.AddToScheme,
 			},
 			WatchConfigs: []controller.WatchConfig{
 				controller.WatchOwned(&dbv1.DocumentDB{}),

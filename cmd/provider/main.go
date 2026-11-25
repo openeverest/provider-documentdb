@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -14,6 +15,8 @@ import (
 	"github.com/openeverest/openeverest/v2/provider-runtime/preflight"
 	"github.com/openeverest/openeverest/v2/provider-runtime/reconciler"
 
+	"github.com/openeverest/provider-documentdb/internal/cnpgcheck"
+	"github.com/openeverest/provider-documentdb/internal/common"
 	"github.com/openeverest/provider-documentdb/internal/operatorcrds"
 	"github.com/openeverest/provider-documentdb/internal/provider"
 )
@@ -75,6 +78,20 @@ func main() {
 	r, err := reconciler.New(ctx, p, opts...)
 	if err != nil {
 		l.Error(err, "unable to create reconciler")
+		os.Exit(1)
+	}
+
+	// Report on the Provider whether the CloudNativePG the DocumentDB
+	// operator runs on, bundled or not, is one it supports.
+	mgr := r.GetManager()
+	if err := mgr.Add(&cnpgcheck.Reporter{
+		Reader:   mgr.GetAPIReader(),
+		Client:   mgr.GetClient(),
+		Provider: common.ProviderName,
+		Interval: time.Minute,
+		Log:      ctrl.Log.WithName("cnpgcheck"),
+	}); err != nil {
+		l.Error(err, "unable to add the CloudNativePG check")
 		os.Exit(1)
 	}
 

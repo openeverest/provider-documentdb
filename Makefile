@@ -48,6 +48,11 @@ PREVIOUS_CHART_VERSION ?= 0.1.0
 PREVIOUS_OPERATOR_VERSION ?= 1.2.0
 OPERATOR_VERSION ?= $(DOCUMENTDB_OPERATOR_VERSION)
 
+# provider-cloudnative-pg release the e2e-cluster coexist test installs next
+# to the provider, in its documented namespace.
+PROVIDER_CNPG_VERSION ?= 0.4.3
+PROVIDER_CNPG_NAMESPACE ?= everest-system
+
 # cert-manager, which the DocumentDB operator needs, and the CSI hostpath
 # driver the e2e-cluster tests grow volumes with (k3d's local-path can't).
 CERT_MANAGER_VERSION ?= v1.21.3
@@ -247,6 +252,16 @@ test-e2e-cluster-operator-upgrade: ## Run the e2e-cluster operator-upgrade test 
 test-e2e-cluster-tls: ## Run the e2e-cluster TLS test.
 	. ./test/vars.sh && chainsaw test --config ./test/e2e-cluster/.chainsaw.yaml ./test/e2e-cluster/tls
 
+.PHONY: test-e2e-cluster-coexist-cnpg-first
+test-e2e-cluster-coexist-cnpg-first: ## Run the e2e-cluster coexist test on the CloudNativePG of provider-cloudnative-pg (deployed by deploy-provider-coexist-cnpg-first).
+	. ./test/vars.sh && CNPG_NAMESPACE=$(PROVIDER_CNPG_NAMESPACE) \
+		chainsaw test --config ./test/e2e-cluster/.chainsaw.yaml ./test/e2e-cluster/coexist
+
+.PHONY: test-e2e-cluster-coexist-documentdb-first
+test-e2e-cluster-coexist-documentdb-first: ## Run the e2e-cluster coexist test on the bundled CloudNativePG (deployed by deploy-provider-coexist-documentdb-first).
+	. ./test/vars.sh && CNPG_NAMESPACE=cnpg-system \
+		chainsaw test --config ./test/e2e-cluster/.chainsaw.yaml ./test/e2e-cluster/coexist
+
 .PHONY: deploy-cert-manager
 deploy-cert-manager: ## Install cert-manager (CERT_MANAGER_VERSION) and wait for it.
 	kubectl apply --server-side -f https://github.com/cert-manager/cert-manager/releases/download/$(CERT_MANAGER_VERSION)/cert-manager.yaml
@@ -293,7 +308,6 @@ deploy-operator: ## Install or upgrade the DocumentDB operator chart OPERATOR_VE
 		--create-namespace \
 		--namespace documentdb-operator \
 		--set imageMode=$(DOCUMENTDB_IMAGE_MODE) \
-		--set-string 'cloudnative-pg.config.data.INHERITED_LABELS=core.openeverest.io/*' \
 		--wait --timeout 10m
 
 .PHONY: deploy-provider-operator-previous
@@ -307,6 +321,35 @@ deploy-provider-operator-previous: helm-deps ## Deploy the DocumentDB operator P
 		--set image.pullPolicy=$(PROVIDER_IMAGE_PULL_POLICY) \
 		--set operator.enabled=false \
 		--wait --timeout 10m
+
+.PHONY: deploy-provider-cnpg
+deploy-provider-cnpg: ## Install provider-cloudnative-pg PROVIDER_CNPG_VERSION in PROVIDER_CNPG_NAMESPACE; extra Helm flags in PROVIDER_CNPG_FLAGS.
+	helm upgrade --install provider-cloudnative-pg oci://ghcr.io/openeverest/charts/provider-cloudnative-pg \
+		--version $(PROVIDER_CNPG_VERSION) \
+		--create-namespace \
+		--namespace $(PROVIDER_CNPG_NAMESPACE) \
+		$(PROVIDER_CNPG_FLAGS) \
+		--wait --timeout 10m
+
+.PHONY: deploy-provider-coexist-cnpg-first
+deploy-provider-coexist-cnpg-first: helm-deps ## Deploy provider-cloudnative-pg, then the provider on its CloudNativePG, for the e2e-cluster coexist test.
+	$(MAKE) deploy-provider-cnpg
+	helm upgrade --install provider-documentdb $(CHART_DIR) \
+		--create-namespace \
+		--namespace provider-system \
+		--set image.repository=$(_IMG_REPO) \
+		--set image.tag=$(_IMG_TAG) \
+		--set image.pullPolicy=$(PROVIDER_IMAGE_PULL_POLICY) \
+		--set operator.imageMode=$(DOCUMENTDB_IMAGE_MODE) \
+		--set operator.cloudnative-pg.enabled=false \
+		--set operator.cloudnative-pg.namespaceOverride=$(PROVIDER_CNPG_NAMESPACE) \
+		--wait --timeout 10m
+
+# provider-cloudnative-pg can't detect the bundled CloudNativePG yet, so it is
+# told not to install its own.
+.PHONY: deploy-provider-coexist-documentdb-first
+deploy-provider-coexist-documentdb-first: deploy-provider-e2e ## Deploy the provider, then provider-cloudnative-pg on the CloudNativePG it bundles, for the e2e-cluster coexist test.
+	$(MAKE) deploy-provider-cnpg PROVIDER_CNPG_FLAGS='--set cloudnative-pg.enabled=false'
 
 ##@ Local Development Cluster
 

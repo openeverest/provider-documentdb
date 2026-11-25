@@ -191,14 +191,12 @@ operator:
   # -- Namespace of the operator. Empty installs it in the release namespace.
   namespace: ""
   # The operator chart bundles the CloudNativePG operator, in the cnpg-system
-  # namespace. Set enabled to false when CloudNativePG is already installed
-  # there (for example by provider-cloudnative-pg), and set INHERITED_LABELS in
-  # that installation's configuration instead.
+  # namespace. When CloudNativePG is already installed, for example by
+  # provider-cloudnative-pg, set enabled to false and namespaceOverride to its
+  # namespace: the DocumentDB plugin is installed there, where CloudNativePG
+  # looks for plugins. The chart detects an existing installation and fails
+  # with these settings. The Provider's CloudNativePGCompatible condition
+  # reports whether the DocumentDB operator supports the one it runs on.
   cloudnative-pg:
     enabled: true
-    config:
-      data:
-        # CloudNativePG copies these labels from a Cluster to its pods. The
-        # provider labels the Cluster, since the DocumentDB resource has no pod
-        # labels: OpenEverest finds an Instance's pods by them.
-        INHERITED_LABELS: core.openeverest.io/*
+    namespaceOverride: cnpg-system
