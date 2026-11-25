@@ -88,7 +88,9 @@ func certificateContext(t *testing.T, tls *definition.TLSParameters, certificate
 	raw, err := json.Marshal(definition.Parameters{TLS: tls})
 	require.NoError(t, err)
 	in.Spec.Parameters = &runtime.RawExtension{Raw: raw}
-	builder := fake.NewClientBuilder()
+	// The fake client registers unstructured kinds in its scheme, so the
+	// global one must not be shared with parallel tests.
+	builder := fake.NewClientBuilder().WithScheme(runtime.NewScheme())
 	if certificate != nil {
 		builder = builder.WithObjects(certificate)
 	}

@@ -25,8 +25,20 @@ OPENEVEREST_CONTROLLER_IMG ?= ghcr.io/openeverest/openeverest-controller-dev:0.0
 _IMG_REPO = $(firstword $(subst :, ,$(IMG)))
 _IMG_TAG  = $(lastword $(subst :, ,$(IMG)))
 
-# k3d cluster name (must match dev/k3d_config.yaml metadata.name)
+# k3d cluster config, and its name (must match the config's metadata.name).
+# The e2e-cluster tests use test/e2e-cluster/k3d_config.yaml.
+K3D_CONFIG ?= ./dev/k3d_config.yaml
 K3D_CLUSTER_NAME ?= provider-documentdb-test
+
+# Image mode of the DocumentDB operator in the e2e-cluster tests: auto,
+# imageVolume or combined (the chart's operator.imageMode).
+DOCUMENTDB_IMAGE_MODE ?= auto
+
+# cert-manager, which the DocumentDB operator needs, and the CSI hostpath
+# driver the e2e-cluster tests grow volumes with (k3d's local-path can't).
+CERT_MANAGER_VERSION ?= v1.21.3
+EXTERNAL_SNAPSHOTTER_VERSION ?= v8.7.1
+CSI_HOSTPATH_VERSION ?= v1.19.0
 
 # controller-gen version
 CONTROLLER_TOOLS_VERSION ?= v0.18.0
@@ -161,11 +173,14 @@ load-image: ## Import the provider image (IMG) into the k3d cluster.
 load-openeverest-controller-image: ## Import the OpenEverest controller image into the k3d cluster.
 	k3d image import ${OPENEVEREST_CONTROLLER_IMG} -c ${K3D_CLUSTER_NAME}
 
-.PHONY: install-crds
-install-crds: ## Install the OpenEverest CRDs of the core version pinned in go.mod, and the operator CRDs.
+.PHONY: install-core-crds
+install-core-crds: ## Install the OpenEverest CRDs of the core version pinned in go.mod.
 	# The CRDs of the core release go.mod pins, so the tests run against the API the provider is built for.
 	go mod download github.com/openeverest/openeverest/v2
 	kubectl apply --server-side --force-conflicts -f "$$(go list -m -f '{{.Dir}}' github.com/openeverest/openeverest/v2)/config/crd/bases"
+
+.PHONY: install-crds
+install-crds: install-core-crds ## Install the OpenEverest CRDs and, for tests without the operators, their CRDs.
 	# The DocumentDB operator's CRDs and the CloudNativePG Cluster it creates.
 	for crd in dbs backups scheduledbackups; do \
 		kubectl apply --server-side -f https://raw.githubusercontent.com/documentdb/documentdb-kubernetes-operator/$(DOCUMENTDB_OPERATOR_VERSION)/operator/documentdb-helm-chart/crds/documentdb.io_$$crd.yaml; \
@@ -185,17 +200,60 @@ deploy-provider-ci: helm-deps ## Deploy the provider via Helm for CI (IMG must a
 		--set operator.enabled=false \
 		--wait --timeout 2m
 
+# End-to-end tests run the real DocumentDB operator and CloudNativePG: see
+# test/e2e-cluster/README.md.
+
+.PHONY: test-e2e-cluster
+test-e2e-cluster: ## Run all e2e-cluster tests against the current cluster.
+	. ./test/vars.sh && chainsaw test --config ./test/e2e-cluster/.chainsaw.yaml ./test/e2e-cluster
+
+.PHONY: test-e2e-cluster-lifecycle
+test-e2e-cluster-lifecycle: ## Run the e2e-cluster lifecycle test.
+	. ./test/vars.sh && chainsaw test --config ./test/e2e-cluster/.chainsaw.yaml ./test/e2e-cluster/lifecycle
+
+.PHONY: test-e2e-cluster-tls
+test-e2e-cluster-tls: ## Run the e2e-cluster TLS test.
+	. ./test/vars.sh && chainsaw test --config ./test/e2e-cluster/.chainsaw.yaml ./test/e2e-cluster/tls
+
+.PHONY: deploy-cert-manager
+deploy-cert-manager: ## Install cert-manager (CERT_MANAGER_VERSION) and wait for it.
+	kubectl apply --server-side -f https://github.com/cert-manager/cert-manager/releases/download/$(CERT_MANAGER_VERSION)/cert-manager.yaml
+	kubectl -n cert-manager wait --for=condition=Available deployment --all --timeout=5m
+
+.PHONY: install-csi-hostpath
+install-csi-hostpath: ## Install the CSI hostpath driver as the default StorageClass, with volume expansion.
+	tmp=$$(mktemp -d) && \
+	git clone --quiet --depth 1 --branch $(EXTERNAL_SNAPSHOTTER_VERSION) https://github.com/kubernetes-csi/external-snapshotter.git $$tmp/snapshotter && \
+	kubectl kustomize $$tmp/snapshotter/client/config/crd | kubectl apply --server-side -f - && \
+	kubectl -n kube-system kustomize $$tmp/snapshotter/deploy/kubernetes/snapshot-controller | kubectl apply --server-side -f - && \
+	git clone --quiet --depth 1 --branch $(CSI_HOSTPATH_VERSION) https://github.com/kubernetes-csi/csi-driver-host-path.git $$tmp/hostpath && \
+	$$tmp/hostpath/deploy/kubernetes-latest/deploy.sh && \
+	rm -rf $$tmp
+	kubectl apply -f test/e2e-cluster/storageclass.yaml
+	kubectl patch storageclass local-path -p '{"metadata":{"annotations":{"storageclass.kubernetes.io/is-default-class":"false"}}}'
+
+.PHONY: deploy-provider-e2e
+deploy-provider-e2e: helm-deps ## Deploy the provider with the DocumentDB operator for the e2e-cluster tests (IMG imported into k3d).
+	helm upgrade --install provider-documentdb $(CHART_DIR) \
+		--create-namespace \
+		--namespace provider-system \
+		--set image.repository=$(_IMG_REPO) \
+		--set image.tag=$(_IMG_TAG) \
+		--set image.pullPolicy=Never \
+		--set operator.imageMode=$(DOCUMENTDB_IMAGE_MODE) \
+		--wait --timeout 10m
+
 ##@ Local Development Cluster
 
 .PHONY: k3d-cluster-up
 k3d-cluster-up: ## Create a local k3d cluster for development.
 	$(info Creating k3d cluster for testing)
-	k3d cluster create --config ./dev/k3d_config.yaml
+	k3d cluster create --config $(K3D_CONFIG)
 
 .PHONY: k3d-cluster-down
 k3d-cluster-down: ## Delete the local k3d cluster.
 	$(info Destroying k3d test cluster)
-	k3d cluster delete --config ./dev/k3d_config.yaml
+	k3d cluster delete --config $(K3D_CONFIG)
 
 .PHONY: k3d-cluster-reset
 k3d-cluster-reset: k3d-cluster-down k3d-cluster-up ## Reset the local k3d cluster.

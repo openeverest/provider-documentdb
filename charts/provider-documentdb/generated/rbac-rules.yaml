@@ -10,7 +10,6 @@
     - ""
   resources:
     - pods
-    - services
   verbs:
     - get
     - list
@@ -26,6 +25,15 @@
     - list
     - patch
     - update
+    - watch
+- apiGroups:
+    - ""
+  resources:
+    - services
+  verbs:
+    - get
+    - list
+    - patch
     - watch
 - apiGroups:
     - ""

@@ -1,0 +1,99 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: tls
+spec:
+  description: |
+    The certificate sources other than the default self-signed one, which the
+    lifecycle test covers: a cert-manager Issuer with additionalNames, and a
+    certificate Secret the user brings. A mongosh client verifies the gateway
+    certificate, hostname included, against the ca.crt of the connection
+    Secret, which must be the CA that signed it. Changing additionalNames
+    reissues the certificate. Deleting the Instances deletes the issued
+    certificate and keeps the one the user brought.
+  catch:
+    - script:
+        content: kubectl -n $NAMESPACE get instance,documentdb,clusters.postgresql.cnpg.io,pods,certificates,secrets -o wide
+    - script:
+        content: kubectl -n $NAMESPACE get instance,documentdb,certificates -o yaml
+    - script:
+        content: kubectl -n $NAMESPACE get events --sort-by=.lastTimestamp | tail -40
+    - podLogs:
+        namespace: provider-system
+        selector: app.kubernetes.io/name=provider-documentdb
+        tail: 100
+    - podLogs:
+        namespace: provider-system
+        selector: app=provider-documentdb
+        tail: 100
+  steps:
+    - name: provider-and-operator-running
+      try:
+        - assert:
+            file: 00-assert.yaml
+        - apply:
+            file: ../_lib/mongosh.yaml
+
+    - name: ca
+      try:
+        - apply:
+            file: 05-ca.yaml
+        - assert:
+            file: 05-assert.yaml
+
+    - name: create
+      try:
+        - apply:
+            file: 10-create-instances.yaml
+        - assert:
+            timeout: 10m
+            file: 10-assert.yaml
+
+    - name: clients-verify-the-certificate
+      try:
+        - script:
+            content: |
+              set -eu
+              ca=$(kubectl -n $NAMESPACE get secret e2e-ca -o jsonpath='{.data.ca\.crt}')
+              for instance in docdb-issuer docdb-provided; do
+                conn=$(kubectl -n $NAMESPACE get instance $instance -o jsonpath='{.status.connectionSecretRef.name}')
+                test "$(kubectl -n $NAMESPACE get secret $conn -o jsonpath='{.data.ca\.crt}')" = "$ca"
+                sh ../_lib/data.sh write $instance
+                sh ../_lib/data.sh check $instance
+              done
+
+    - name: change-additional-names
+      try:
+        - patch:
+            resource:
+              apiVersion: core.openeverest.io/v1alpha1
+              kind: Instance
+              metadata:
+                name: docdb-issuer
+              spec:
+                parameters:
+                  tls:
+                    additionalNames:
+                      - docdb2.e2e.example
+        - assert:
+            timeout: 5m
+            file: 20-assert.yaml
+        - script:
+            content: sh ../_lib/data.sh check docdb-issuer
+
+    - name: delete
+      try:
+        - delete:
+            ref:
+              apiVersion: core.openeverest.io/v1alpha1
+              kind: Instance
+              name: docdb-issuer
+        - delete:
+            ref:
+              apiVersion: core.openeverest.io/v1alpha1
+              kind: Instance
+              name: docdb-provided
+        - error:
+            file: 30-errors.yaml
+        - assert:
+            file: 30-assert.yaml

@@ -1,0 +1,16 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: docdb
+(metadata.generation == status.observedGeneration): true
+status:
+  phase: Provisioned
+  (conditions[?type == 'Ready'].status | [0]): "True"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: documentdb-service-docdb
+spec:
+  type: ClusterIP
+  (ports[0].nodePort == null): true

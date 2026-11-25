@@ -1,0 +1,46 @@
+# A CA of the test's own, as a cert-manager Issuer: it issues the gateway
+# certificate of docdb-issuer and the certificate docdb-provided brings.
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: selfsigned
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: e2e-ca
+spec:
+  isCA: true
+  commonName: e2e-ca
+  secretName: e2e-ca
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: selfsigned
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: e2e-ca
+spec:
+  ca:
+    secretName: e2e-ca
+---
+# The certificate docdb-provided brings, for the names of its gateway Service.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: docdb-provided-tls
+spec:
+  secretName: docdb-provided-tls
+  dnsNames:
+    - documentdb-service-docdb-provided
+    - (join('.', ['documentdb-service-docdb-provided', $namespace]))
+    - (join('.', ['documentdb-service-docdb-provided', $namespace, 'svc']))
+  issuerRef:
+    name: e2e-ca
+    kind: Issuer

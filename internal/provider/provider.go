@@ -95,6 +95,10 @@ func (p *Provider) Sync(c *controller.Context) error {
 		return err
 	}
 
+	if err := syncServiceType(c); err != nil {
+		return err
+	}
+
 	return syncCertificateNames(c, params.TLS)
 }
 

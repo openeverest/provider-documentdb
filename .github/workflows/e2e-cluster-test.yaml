@@ -1,0 +1,119 @@
+---
+# Reusable workflow — run one chainsaw e2e-cluster suite inside a k3d cluster,
+# against the real DocumentDB operator and CloudNativePG. Called by ci.yaml;
+# not triggered directly.
+#
+# Unlike integration-test.yaml, the provider chart installs the operators, and
+# the cluster has what they need: cert-manager, a StorageClass that can grow
+# volumes (CSI hostpath) and a load balancer (k3s servicelb). See
+# test/e2e-cluster/README.md.
+name: E2E cluster test
+
+on:
+  workflow_call:
+    inputs:
+      make_target:
+        description: 'Make target for the chainsaw suite (e.g. test-e2e-cluster-lifecycle)'
+        type: string
+        required: true
+      suite:
+        description: 'Human-readable suite name used for artifact naming'
+        type: string
+        required: true
+      operator_image_mode:
+        description: 'imageMode of the DocumentDB operator: auto, imageVolume or combined'
+        type: string
+        default: auto
+      expected_image_mode:
+        description: 'Image mode the tests expect the operator to use (imageVolume or combined); empty to accept either'
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+env:
+  IMG: provider-documentdb:ci
+  K3D_CONFIG: ./test/e2e-cluster/k3d_config.yaml
+  # Branch of openeverest/openeverest to build the platform from.
+  OPENEVEREST_BRANCH: main
+
+jobs:
+  run:
+    name: ${{ inputs.suite }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Checkout OpenEverest
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: openeverest/openeverest
+          ref: ${{ env.OPENEVEREST_BRANCH }}
+          path: _openeverest
+
+      - name: Install Kubernetes tooling
+        uses: ./.github/actions/setup-k8s-tools
+        with:
+          install-k3d: 'true'
+          install-chainsaw: 'true'
+
+      - name: Create k3d cluster
+        run: |
+          sudo modprobe br_netfilter
+          make k3d-cluster-up
+
+      - name: Install the CSI hostpath driver
+        run: make install-csi-hostpath
+
+      - name: Install cert-manager
+        run: make deploy-cert-manager
+
+      - name: Build provider image
+        run: make docker-build
+
+      - name: Import image into k3d
+        run: make load-image
+
+      - name: Build OpenEverest controller
+        working-directory: _openeverest
+        run: make build-controller
+
+      - name: Build OpenEverest controller Docker image
+        working-directory: _openeverest
+        run: make docker-build-controller
+
+      - name: Import OpenEverest controller image into k3d
+        run: make load-openeverest-controller-image
+
+      # The chart brings the operators' CRDs.
+      - name: Install OpenEverest CRDs
+        run: make install-core-crds
+
+      - name: Deploy provider and operators
+        run: make deploy-provider-e2e
+        env:
+          DOCUMENTDB_IMAGE_MODE: ${{ inputs.operator_image_mode }}
+
+      - name: Deploy OpenEverest controller
+        working-directory: _openeverest
+        run: make deploy-test-controller
+
+      - name: Wait for OpenEverest deployment to be ready
+        working-directory: _openeverest
+        run: make wait-test-controller
+
+      - name: Run ${{ inputs.make_target }}
+        run: make ${{ inputs.make_target }}
+        env:
+          E2E_IMAGE_MODE: ${{ inputs.expected_image_mode }}
+
+      - name: Upload chainsaw report on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: chainsaw-${{ inputs.suite }}-${{ github.run_id }}
+          path: /tmp/chainsaw-report*.xml
+          retention-days: 7

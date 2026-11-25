@@ -1,0 +1,45 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: docdb-issuer
+(metadata.generation == status.observedGeneration): true
+status:
+  phase: Provisioned
+  (conditions[?type == 'Ready'].status | [0]): "True"
+---
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: docdb-provided
+(metadata.generation == status.observedGeneration): true
+status:
+  phase: Provisioned
+  (conditions[?type == 'Ready'].status | [0]): "True"
+---
+# The issuer's certificate covers the Service and the additional name.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: docdb-issuer-gateway-cert
+spec:
+  issuerRef:
+    name: e2e-ca
+    kind: Issuer
+  (contains(dnsNames, 'docdb.e2e.example')): true
+  (contains(dnsNames, join('.', ['documentdb-service-docdb-issuer', $namespace, 'svc']))): true
+status:
+  (conditions[?type == 'Ready'].status | [0]): "True"
+---
+apiVersion: documentdb.io/v1
+kind: DocumentDB
+metadata:
+  name: docdb-provided
+spec:
+  tls:
+    gateway:
+      mode: Provided
+      provided:
+        secretName: docdb-provided-tls
+status:
+  tls:
+    ready: true

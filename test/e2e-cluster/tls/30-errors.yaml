@@ -1,0 +1,5 @@
+# The certificate issued for docdb-issuer goes with it.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: docdb-issuer-gateway-cert-tls

@@ -1,0 +1,12 @@
+# The default StorageClass of the e2e-cluster tests: the CSI hostpath driver,
+# which, unlike k3d's local-path, can grow volumes.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: csi-hostpath
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: hostpath.csi.k8s.io
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true

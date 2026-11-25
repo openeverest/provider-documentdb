@@ -32,8 +32,9 @@ package provider
 // requests up to date with spec.parameters.tls.additionalNames.
 // +kubebuilder:rbac:groups=cert-manager.io,resources=certificates,verbs=get;patch
 
-// The gateway Service carries the load balancer address.
-// +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch
+// The gateway Service carries the load balancer address. The provider changes
+// its type, which the operator sets only when it creates the Service.
+// +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;patch
 // The runtime counts the labelled pods into status.components.
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 
