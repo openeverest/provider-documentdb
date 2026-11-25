@@ -50,6 +50,11 @@ manages pods directly — all lifecycle work is delegated to the operator.
 |---|---|---|---|---|
 | `0.1.x` | `2.0.0-alpha.1` | `1.2.1` (bundles CloudNativePG `1.29.1`) | `1.0.0`, `1.0.1` | `1.32` or later |
 
+Each chart also names the OpenEverest it is built for, in the `openeverest.io/contract-version`
+annotation of its `Chart.yaml`, which `make generate` writes. A Helm install on an OpenEverest
+that does not serve that version fails, and a build applied any other way waits, unready, until
+OpenEverest serves it; see [Installation](#installation).
+
 [cert-manager](https://cert-manager.io/) is required: the operator issues its webhook and
 gateway certificates with it.
 
@@ -107,6 +112,26 @@ together with the CloudNativePG operator it builds on:
 - For backups, install the VolumeSnapshot CRDs and a snapshot-capable CSI driver before the
   chart. CloudNativePG looks for the CRDs when it starts: if you add them later, restart it.
 - Set `operator.enabled=false` to manage the DocumentDB operator yourself.
+
+Compatibility with OpenEverest:
+
+- With Helm or Flux, the install fails, before anything is applied, when the OpenEverest in the
+  cluster does not serve the OpenEverest the chart is built for, and the error names the
+  OpenEverest it needs. Argo CD, and any tool that applies pre-rendered manifests, renders the
+  chart without reading the cluster, so that check passes there. Whichever tool applies it, a
+  new build of the provider that the installed OpenEverest does not support stays alive but
+  unready until OpenEverest does, and a Warning Event on the `Provider` says why (see
+  [Troubleshooting](#troubleshooting)). Under the default `RollingUpdate` strategy, the
+  previous build, if any, keeps serving meanwhile.
+- To install anyway, set `compatibility.acknowledge.coreVersion` to the OpenEverest version the
+  cluster runs, which the error also names. The chart writes it on the `Provider` and the
+  presets as `openeverest.io/compatibility-acknowledged`, and the provider reads it on its
+  `Provider` at startup, so it lets a held build start too. It holds on that release and on
+  later ones that keep its contract, such as its patch releases, and expires with the first
+  OpenEverest release that changes the contract, which is checked again.
+- The chart sets no annotation for any tool itself: `openeverest.annotations` adds annotations
+  to the `Provider` and the presets, such as `argocd.argoproj.io/sync-wave: "-1"` to have
+  Argo CD apply them before the provider's `Deployment` and the bundled operators.
 
 Upgrade and uninstall:
 
@@ -406,7 +431,7 @@ local k3d setup, running against a cluster you already have, and every `dev/.env
 
 ```bash
 make dev-up             # local cluster + Tilt dev environment (see dev/README.md)
-make generate           # RBAC, operator CRDs, provider spec, Helm chart sync
+make generate           # RBAC, operator CRDs, provider spec, Helm chart sync, OpenEverest stamp
 make run                # run the provider locally against the cluster
 make test-unit
 make test-integration   # chainsaw suites under test/integration/
@@ -414,8 +439,9 @@ make test-e2e-cluster   # chainsaw suites under test/e2e-cluster/, with the real
 make dev-down
 ```
 
-`make help` lists every target. `make verify` fails when generated files are stale — run
-`make generate` and commit the result.
+`make help` lists every target. `make verify` fails when generated files are stale or the chart
+is not stamped with the OpenEverest the provider is built against — run `make generate` and
+commit the result.
 
 The provider contract (`Validate` / `Sync` / `Status` / `Cleanup`), RBAC markers, watches,
 code generation, and the backup/restore interfaces are documented once for all providers in
@@ -430,7 +456,7 @@ code generation, and the backup/restore interfaces are documented once for all p
 | `internal/common/` | Component name constants |
 | `internal/operatorcrds/` | The DocumentDB operator's CRDs the pre-upgrade hook applies (`crd.yaml` is copied by `make generate` from the operator module in `go.mod`) |
 | `definition/` | Provider identity, component types, versions, topologies, backup classes, monitoring contract |
-| `charts/provider-documentdb/` | Helm chart (`generated/` is produced by `make generate`) |
+| `charts/provider-documentdb/` | Helm chart (`generated/`, the `Chart.yaml` stamp, `templates/_openeverest_contract.tpl` and `templates/openeverest-compat-check.yaml` are produced by `make generate`) |
 | `config/rbac/role.yaml` | Generated `ClusterRole` — do not edit |
 | `test/integration/` | Chainsaw suites without the operator (see its `README.md`) |
 | `test/e2e-cluster/` | Chainsaw suites with the real operator (see its `README.md`) |
@@ -465,6 +491,7 @@ kubectl logs -n everest-system deploy/provider-documentdb -f
 | `Instance` stuck in `Creating` | `kubectl describe instance <name>` conditions, then the provider logs |
 | No `Provider` resource in the cluster | Is the chart installed? Check the provider deployment logs |
 | `Instance` ignored entirely | `spec.providerRef.name` must be `documentdb` |
+| New provider pod running but never `Ready` | It waits until the installed OpenEverest supports this build: the Warning Event in `kubectl describe provider documentdb` says why |
 | Operator resource created but no pods | `kubectl describe documentdb <name>` and the `clusters.postgresql.cnpg.io` of the same name — the failure is upstream |
 | Instance Ready but `status.components` empty, no metrics | CloudNativePG lacks `INHERITED_LABELS: core.openeverest.io/*` (see [Installation](#installation)) |
 | Backups fail with `missing VolumeSnapshot CRD` | Install the VolumeSnapshot CRDs, then restart the CloudNativePG operator |
