@@ -25,18 +25,21 @@ func main() {
 	var preflightSpec string
 	var applyOperatorCRDs bool
 	var admission bool
+	var postgresImage string
 
 	flag.IntVar(&serverPort, "server-port", 8082, "The port for the provider HTTP server.")
 	flag.StringVar(&metricsBindAddress, "metrics-bind-address", ":8081", "The address the metrics endpoint binds to. Use 0 to disable.")
 	flag.StringVar(&preflightSpec, "preflight-spec", "", "Run the upgrade preflight against the target Provider spec at this path and exit. Used by the chart's pre-upgrade hook.")
 	flag.BoolVar(&applyOperatorCRDs, "apply-operator-crds", false, "With --preflight-spec, apply the bundled operator's CRDs once the preflight passes. Used by the chart's pre-upgrade hook.")
 	flag.BoolVar(&admission, "admission", true, "Serve the Instance admission webhook, with the serving certificate the chart mounts.")
+	flag.StringVar(&postgresImage, "postgres-image", provider.DefaultPostgresImage, "PostgreSQL image instances run on in ImageVolume mode. Changing it restarts running instances once the change is approved through maintenance.")
 	flag.Parse()
 
 	l := ctrl.Log.WithName("setup")
 	ctx := ctrl.SetupSignalHandler()
 
 	p := provider.New()
+	p.PostgresImage = postgresImage
 
 	if preflightSpec != "" {
 		if err := preflight.Run(ctx, p, preflight.Options{TargetSpecFile: preflightSpec}); err != nil {

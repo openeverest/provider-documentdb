@@ -150,6 +150,11 @@ presets:
           service:
             serviceType: ClusterIP
 
+# -- PostgreSQL image DocumentDB runs on in ImageVolume mode. Empty uses the
+# image the provider release pins. A different image restarts running
+# instances once the change is approved through spec.maintenance.
+postgresImage: ""
+
 # -- Additional environment variables to set on the provider container
 extraEnv: []
 # - name: MY_VAR

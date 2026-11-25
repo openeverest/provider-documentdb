@@ -48,6 +48,9 @@ spec:
           args:
             - --server-port={{ .Values.service.port }}
             - --metrics-bind-address={{ .Values.service.metricsBindAddress }}
+            {{- with .Values.postgresImage }}
+            - --postgres-image={{ . }}
+            {{- end }}
           ports:
             - name: http
               containerPort: {{ .Values.service.port }}
