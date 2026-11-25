@@ -2,13 +2,19 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"flag"
+	"fmt"
 	"os"
 
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/openeverest/openeverest/v2/provider-runtime/preflight"
 	"github.com/openeverest/openeverest/v2/provider-runtime/reconciler"
 
+	"github.com/openeverest/provider-documentdb/internal/operatorcrds"
 	"github.com/openeverest/provider-documentdb/internal/provider"
 )
 
@@ -16,17 +22,42 @@ import (
 func main() {
 	var serverPort int
 	var metricsBindAddress string
+	var preflightSpec string
+	var applyOperatorCRDs bool
 	var admission bool
+	var postgresImage string
 
 	flag.IntVar(&serverPort, "server-port", 8082, "The port for the provider HTTP server.")
 	flag.StringVar(&metricsBindAddress, "metrics-bind-address", ":8081", "The address the metrics endpoint binds to. Use 0 to disable.")
+	flag.StringVar(&preflightSpec, "preflight-spec", "", "Run the upgrade preflight against the target Provider spec at this path and exit. Used by the chart's pre-upgrade hook.")
+	flag.BoolVar(&applyOperatorCRDs, "apply-operator-crds", false, "With --preflight-spec, apply the bundled operator's CRDs once the preflight passes. Used by the chart's pre-upgrade hook.")
 	flag.BoolVar(&admission, "admission", true, "Serve the Instance admission webhook, with the serving certificate the chart mounts.")
+	flag.StringVar(&postgresImage, "postgres-image", provider.DefaultPostgresImage, "PostgreSQL image instances run on in ImageVolume mode. Changing it restarts running instances once the change is approved through maintenance.")
 	flag.Parse()
 
 	l := ctrl.Log.WithName("setup")
 	ctx := ctrl.SetupSignalHandler()
 
 	p := provider.New()
+	p.PostgresImage = postgresImage
+
+	if preflightSpec != "" {
+		if err := preflight.Run(ctx, p, preflight.Options{TargetSpecFile: preflightSpec}); err != nil {
+			if !errors.Is(err, preflight.ErrUpgradeBlocked) {
+				// The controller-runtime logger is not initialized on this
+				// path; stderr is the pod log the hook preserves.
+				fmt.Fprintln(os.Stderr, "upgrade preflight could not run:", err)
+			}
+			os.Exit(1)
+		}
+		if applyOperatorCRDs {
+			if err := applyBundledOperatorCRDs(ctx); err != nil {
+				fmt.Fprintln(os.Stderr, "upgrade preflight could not apply the operator CRDs:", err)
+				os.Exit(1)
+			}
+		}
+		return
+	}
 
 	opts := []reconciler.ReconcilerOption{
 		// Serve the health and readiness probes.
@@ -51,4 +82,22 @@ func main() {
 		l.Error(err, "unable to start reconciler")
 		os.Exit(1)
 	}
+}
+
+// applyBundledOperatorCRDs upgrades the operator's CRDs ahead of the operator
+// itself; Helm leaves the CRDs of a chart dependency at their first install.
+func applyBundledOperatorCRDs(ctx context.Context) error {
+	cfg, err := ctrl.GetConfig()
+	if err != nil {
+		return fmt.Errorf("get kubeconfig: %w", err)
+	}
+	c, err := client.New(cfg, client.Options{})
+	if err != nil {
+		return fmt.Errorf("create client: %w", err)
+	}
+	if err := operatorcrds.Apply(ctx, c); err != nil {
+		return err
+	}
+	fmt.Println("operator CRDs applied")
+	return nil
 }

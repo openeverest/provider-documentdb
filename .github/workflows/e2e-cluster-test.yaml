@@ -24,6 +24,10 @@ on:
         description: 'imageMode of the DocumentDB operator: auto, imageVolume or combined'
         type: string
         default: auto
+      deploy_target:
+        description: 'Make target that deploys the provider and operators before the suite (deploy-provider-previous for the upgrade suite)'
+        type: string
+        default: deploy-provider-e2e
       expected_image_mode:
         description: 'Image mode the tests expect the operator to use (imageVolume or combined); empty to accept either'
         type: string
@@ -93,7 +97,7 @@ jobs:
         run: make install-core-crds
 
       - name: Deploy provider and operators
-        run: make deploy-provider-e2e
+        run: make ${{ inputs.deploy_target }}
         env:
           DOCUMENTDB_IMAGE_MODE: ${{ inputs.operator_image_mode }}
 

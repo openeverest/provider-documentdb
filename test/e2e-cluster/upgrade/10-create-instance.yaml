@@ -1,0 +1,17 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: docdb
+spec:
+  providerRef:
+    name: documentdb
+  version: "1.0.1"
+  components:
+    engine:
+      replicas: 1
+      resources:
+        limits:
+          cpu: 400m
+          memory: 1Gi
+      storage:
+        size: 10Gi
