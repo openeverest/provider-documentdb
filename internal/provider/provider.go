@@ -73,7 +73,8 @@ func enqueueDocumentDBOwner(_ context.Context, obj client.Object) []reconcile.Re
 
 // Sync renders the Instance into the operator's resources: the credentials
 // Secret, the DocumentDB and, when backups are scheduled, a ScheduledBackup.
-// It keeps the names of the gateway certificate up to date.
+// Changes that roll the pods wait for maintenance approval. It keeps the
+// names of the gateway certificate up to date.
 func (p *Provider) Sync(c *controller.Context) error {
 	params := decodeParameters(c)
 
@@ -82,7 +83,12 @@ func (p *Provider) Sync(c *controller.Context) error {
 		return err
 	}
 
-	monitoring, err := monitoringSpec(c)
+	live, err := liveDocumentDB(c)
+	if err != nil {
+		return err
+	}
+
+	monitoring, err := monitoringSpec(c, live)
 	if err != nil {
 		return err
 	}
@@ -97,6 +103,9 @@ func (p *Provider) Sync(c *controller.Context) error {
 		return err
 	}
 	setPostgresImage(db, image)
+	if err := holdDisruptiveChanges(c, live, db); err != nil {
+		return err
+	}
 	if err := c.Apply(db); err != nil {
 		return err
 	}

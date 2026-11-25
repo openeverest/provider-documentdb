@@ -8,7 +8,7 @@ metadata:
 spec:
   description: |
     Lifecycle of an Instance: create, simulate operator readiness, update,
-    reject an invalid Instance and a change of the certificate source, and
+    hold the change of CPU and memory until it is approved, reject an invalid Instance and a change of the certificate source, and
     delete.
 
   catch:
@@ -59,6 +59,17 @@ spec:
             file: 20-assert.yaml
         - error:
             file: 20-errors.yaml
+
+    - name: approve-maintenance
+      try:
+        - script:
+            content: |
+              set -e
+              token=$(kubectl -n $NAMESPACE get instance test-instance -o jsonpath='{.status.pendingMaintenance[0].approvalToken}')
+              kubectl -n $NAMESPACE patch instance test-instance --type=merge \
+                -p "{\"spec\":{\"maintenance\":{\"approved\":\"$token\"}}}"
+        - assert:
+            file: 21-assert.yaml
 
     - name: reject-invalid-instance
       try:

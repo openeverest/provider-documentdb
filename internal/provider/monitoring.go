@@ -46,13 +46,10 @@ func collectorEnabled(db *dbv1.DocumentDB) bool {
 // monitoringSpec turns the operator's OpenTelemetry Collector sidecar on
 // while the metrics source policy or a bound class requires metrics. Adding
 // or removing the sidecar rolls the pods, so while the requirement cannot be
-// resolved the live setting is kept.
-func monitoringSpec(c *controller.Context) (*dbv1.MonitoringSpec, error) {
+// resolved the live setting is kept, and a change waits for maintenance
+// approval (holdDisruptiveChanges).
+func monitoringSpec(c *controller.Context, live *dbv1.DocumentDB) (*dbv1.MonitoringSpec, error) {
 	req, err := c.RequiredSources()
-	if err != nil {
-		return nil, err
-	}
-	live, err := liveDocumentDB(c)
 	if err != nil {
 		return nil, err
 	}

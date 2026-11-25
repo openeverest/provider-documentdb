@@ -1,0 +1,16 @@
+# Approved: the new CPU and memory apply and nothing is pending.
+apiVersion: documentdb.io/v1
+kind: DocumentDB
+metadata:
+  name: test-instance
+spec:
+  resource:
+    cpu: "2"
+    memory: 4Gi
+---
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: test-instance
+status:
+  (length(pendingMaintenance || `[]`)): 0
