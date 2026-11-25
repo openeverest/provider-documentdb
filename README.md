@@ -345,6 +345,7 @@ make generate           # RBAC, provider spec, Helm chart sync
 make run                # run the provider locally against the cluster
 make test-unit
 make test-integration   # chainsaw suites under test/integration/
+make test-e2e-cluster   # chainsaw suites under test/e2e-cluster/, with the real operator
 make dev-down
 ```
 
@@ -365,11 +366,12 @@ code generation, and the backup/restore interfaces are documented once for all p
 | `definition/` | Provider identity, component types, versions, topologies, backup classes, monitoring contract |
 | `charts/provider-documentdb/` | Helm chart (`generated/` is produced by `make generate`) |
 | `config/rbac/role.yaml` | Generated `ClusterRole` — do not edit |
-| `test/integration/` | Chainsaw suites (see its `README.md`) |
-| `test/vars.sh` | Environment of the integration tests |
+| `test/integration/` | Chainsaw suites without the operator (see its `README.md`) |
+| `test/e2e-cluster/` | Chainsaw suites with the real operator (see its `README.md`) |
+| `test/vars.sh` | Environment of the chainsaw tests |
 | `examples/` | Example `Instance` resources |
 | `dev/` | Tilt dev environment, `.env` configuration, k3d cluster config |
-| `.github/workflows/` | CI: lint, build, unit and integration tests, release |
+| `.github/workflows/` | CI: lint, build, unit, integration and e2e-cluster tests, release |
 | `.github/dependabot.yml` | Daily PRs for new operator releases (Go module + Helm subchart) |
 
 ### Testing
@@ -378,8 +380,12 @@ code generation, and the backup/restore interfaces are documented once for all p
 - **Integration tests** — chainsaw suites under `test/integration/`. They run without the
   DocumentDB operator and play its part by patching statuses. See
   [test/integration/README.md](test/integration/README.md).
+- **End-to-end tests** — chainsaw suites under `test/e2e-cluster/`. They run the real
+  DocumentDB operator and CloudNativePG, and connect with `mongosh`. See
+  [test/e2e-cluster/README.md](test/e2e-cluster/README.md).
 - **CI** — `.github/workflows/ci.yaml` runs lint, build, unit tests, generated-file
-  verification, Helm lint, and each integration suite on every pull request.
+  verification, Helm lint, each integration suite, and the e2e-cluster suites (lifecycle in
+  both image modes, TLS) on every pull request.
 
 ## Troubleshooting
 

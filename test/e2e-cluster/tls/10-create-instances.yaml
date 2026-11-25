@@ -1,0 +1,42 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: docdb-issuer
+spec:
+  providerRef:
+    name: documentdb
+  components:
+    engine:
+      replicas: 1
+      resources:
+        limits:
+          cpu: 400m
+          memory: 1Gi
+      storage:
+        size: 10Gi
+  parameters:
+    tls:
+      issuer:
+        name: e2e-ca
+      additionalNames:
+        - docdb.e2e.example
+---
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: docdb-provided
+spec:
+  providerRef:
+    name: documentdb
+  components:
+    engine:
+      replicas: 1
+      resources:
+        limits:
+          cpu: 400m
+          memory: 1Gi
+      storage:
+        size: 10Gi
+  parameters:
+    tls:
+      certificateSecretName: docdb-provided-tls

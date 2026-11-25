@@ -1,0 +1,15 @@
+# The client of the suites: mongosh, run with kubectl exec by mongosh.sh.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mongosh
+spec:
+  terminationGracePeriodSeconds: 0
+  containers:
+    - name: mongosh
+      image: mongo:8.0
+      command: ["sleep", "infinity"]
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi

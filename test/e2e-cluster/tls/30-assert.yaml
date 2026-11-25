@@ -1,0 +1,5 @@
+# The certificate docdb-provided brought is the user's: it stays.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: docdb-provided-tls

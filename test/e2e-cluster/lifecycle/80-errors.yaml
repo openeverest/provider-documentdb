@@ -1,0 +1,36 @@
+# Deleting the Instance deletes everything it was made of, data included.
+apiVersion: documentdb.io/v1
+kind: DocumentDB
+metadata:
+  name: docdb
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: docdb
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  labels:
+    cnpg.io/cluster: docdb
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: documentdb-service-docdb
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: docdb-gateway-cert-tls
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: docdb-credentials
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: docdb-conn

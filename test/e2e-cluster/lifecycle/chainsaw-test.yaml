@@ -1,0 +1,266 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: lifecycle
+spec:
+  description: |
+    Lifecycle of an Instance on the real DocumentDB operator, checked by a
+    mongosh client with the connection Secret: create on 1.0.0 with the default
+    TLS, write and read data, scale 1 -> 3, grow storage, change resources,
+    upgrade to 1.0.1, scale 3 -> 1, expose through a LoadBalancer and back,
+    delete.
+    The data must survive every step. Runs in the image mode the operator
+    picks (E2E_IMAGE_MODE checks which one).
+  catch:
+    - script:
+        content: kubectl -n $NAMESPACE get instance,documentdb,clusters.postgresql.cnpg.io,pods,pvc,svc,certificates -o wide
+    - script:
+        content: kubectl -n $NAMESPACE get instance,documentdb,clusters.postgresql.cnpg.io -o yaml
+    - script:
+        content: kubectl -n $NAMESPACE get events --sort-by=.lastTimestamp | tail -40
+    - podLogs:
+        namespace: provider-system
+        selector: app.kubernetes.io/name=provider-documentdb
+        tail: 100
+    - podLogs:
+        namespace: provider-system
+        selector: app=provider-documentdb
+        tail: 100
+  steps:
+    - name: provider-and-operator-running
+      try:
+        - assert:
+            file: 00-assert.yaml
+        - apply:
+            file: ../_lib/mongosh.yaml
+        - assert:
+            resource:
+              apiVersion: v1
+              kind: Pod
+              metadata:
+                name: mongosh
+              status:
+                phase: Running
+
+    - name: create
+      try:
+        - apply:
+            file: 10-create-instance.yaml
+        - assert:
+            timeout: 10m
+            file: 10-assert.yaml
+        - script:
+            content: sh ../_lib/image.sh docdb 1.0.0
+
+    - name: write-and-read
+      try:
+        - script:
+            content: |
+              set -eu
+              sh ../_lib/data.sh write docdb
+              sh ../_lib/data.sh check docdb
+        # The gateway accepts TLS only.
+        - script:
+            content: |
+              set -eu
+              get() { kubectl -n $NAMESPACE get secret docdb-conn -o jsonpath="{.data.$1}" | base64 -d; }
+              if kubectl -n $NAMESPACE exec mongosh -- mongosh --quiet \
+                "mongodb://$(get host):$(get port)/?directConnection=true&serverSelectionTimeoutMS=5000" \
+                -u "$(get username)" -p "$(get password)" --authenticationMechanism SCRAM-SHA-256 \
+                --eval 'db.runCommand({ping: 1})'; then
+                echo "the gateway accepted a connection without TLS" >&2
+                exit 1
+              fi
+
+    - name: scale-up
+      try:
+        - patch:
+            resource:
+              apiVersion: core.openeverest.io/v1alpha1
+              kind: Instance
+              metadata:
+                name: docdb
+              spec:
+                components:
+                  engine:
+                    replicas: 3
+        - assert:
+            timeout: 10m
+            file: 20-assert.yaml
+        - script:
+            content: sh ../_lib/data.sh check docdb
+
+    - name: grow-storage
+      try:
+        - patch:
+            resource:
+              apiVersion: core.openeverest.io/v1alpha1
+              kind: Instance
+              metadata:
+                name: docdb
+              spec:
+                components:
+                  engine:
+                    storage:
+                      size: 12Gi
+        - assert:
+            timeout: 10m
+            file: 30-assert.yaml
+        - script:
+            timeout: 20m
+            content: |
+              set -eu
+              # Every volume grows, not only its claim.
+              for i in $(seq 1 180); do
+                sizes=$(kubectl -n $NAMESPACE get pvc -l cnpg.io/cluster=docdb \
+                  -o jsonpath='{range .items[*]}{.spec.resources.requests.storage}/{.status.capacity.storage} {end}')
+                [ "$sizes" = "12Gi/12Gi 12Gi/12Gi 12Gi/12Gi " ] && break
+                sleep 5
+              done
+              echo "volumes (requested/capacity): $sizes"
+              test "$sizes" = "12Gi/12Gi 12Gi/12Gi 12Gi/12Gi "
+              sh ../_lib/data.sh check docdb
+
+    - name: change-resources
+      try:
+        - patch:
+            resource:
+              apiVersion: core.openeverest.io/v1alpha1
+              kind: Instance
+              metadata:
+                name: docdb
+              spec:
+                components:
+                  engine:
+                    resources:
+                      limits:
+                        cpu: 600m
+                        memory: 1536Mi
+        - assert:
+            timeout: 10m
+            file: 40-assert.yaml
+        - script:
+            timeout: 20m
+            content: |
+              set -eu
+              # Every pod restarts with the new limits.
+              for i in $(seq 1 180); do
+                cpus=$(kubectl -n $NAMESPACE get pods -l cnpg.io/cluster=docdb,cnpg.io/podRole=instance \
+                  -o jsonpath='{range .items[*]}{.spec.containers[?(@.name=="postgres")].resources.limits.cpu} {end}')
+                [ "$cpus" = "600m 600m 600m " ] && break
+                sleep 5
+              done
+              echo "postgres CPU limits: $cpus"
+              test "$cpus" = "600m 600m 600m "
+              sh ../_lib/data.sh check docdb
+
+    - name: upgrade-version
+      try:
+        - patch:
+            resource:
+              apiVersion: core.openeverest.io/v1alpha1
+              kind: Instance
+              metadata:
+                name: docdb
+              spec:
+                version: "1.0.1"
+        - assert:
+            timeout: 15m
+            file: 50-assert.yaml
+        - script:
+            timeout: 20m
+            content: |
+              set -eu
+              sh ../_lib/image.sh docdb 1.0.1
+              sh ../_lib/data.sh check docdb
+
+    - name: scale-down
+      try:
+        - patch:
+            resource:
+              apiVersion: core.openeverest.io/v1alpha1
+              kind: Instance
+              metadata:
+                name: docdb
+              spec:
+                components:
+                  engine:
+                    replicas: 1
+        - assert:
+            timeout: 10m
+            file: 60-assert.yaml
+        - script:
+            content: sh ../_lib/data.sh check docdb
+
+    - name: load-balancer
+      try:
+        - patch:
+            resource:
+              apiVersion: core.openeverest.io/v1alpha1
+              kind: Instance
+              metadata:
+                name: docdb
+              spec:
+                components:
+                  engine:
+                    service:
+                      serviceType: LoadBalancer
+        - assert:
+            timeout: 10m
+            file: 70-assert.yaml
+        - script:
+            timeout: 5m
+            content: |
+              set -eu
+              # The connection Secret points at the load balancer.
+              for i in $(seq 1 30); do
+                address=$(kubectl -n $NAMESPACE get svc documentdb-service-docdb \
+                  -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}')
+                host=$(kubectl -n $NAMESPACE get secret docdb-conn -o jsonpath='{.data.host}' | base64 -d)
+                [ "$host" = "$address" ] && break
+                sleep 5
+              done
+              echo "load balancer: $address, connection host: $host"
+              test "$host" = "$address"
+              # The certificate names the Service, not the address.
+              sh ../_lib/data.sh check docdb --tlsAllowInvalidHostnames
+
+    - name: back-to-cluster-ip
+      try:
+        - patch:
+            resource:
+              apiVersion: core.openeverest.io/v1alpha1
+              kind: Instance
+              metadata:
+                name: docdb
+              spec:
+                components:
+                  engine:
+                    service:
+                      serviceType: ClusterIP
+        - assert:
+            timeout: 5m
+            file: 75-assert.yaml
+        - script:
+            timeout: 5m
+            content: |
+              set -eu
+              want=documentdb-service-docdb.$NAMESPACE.svc
+              for i in $(seq 1 30); do
+                host=$(kubectl -n $NAMESPACE get secret docdb-conn -o jsonpath='{.data.host}' | base64 -d)
+                [ "$host" = "$want" ] && break
+                sleep 5
+              done
+              echo "connection host: $host"
+              test "$host" = "$want"
+              sh ../_lib/data.sh check docdb
+
+    - name: delete
+      try:
+        - delete:
+            ref:
+              apiVersion: core.openeverest.io/v1alpha1
+              kind: Instance
+              name: docdb
+        - error:
+            file: 80-errors.yaml
