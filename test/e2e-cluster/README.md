@@ -17,6 +17,7 @@ that the database works.
 | `lifecycle/` | Create; connect (TLS verified, hostname included; plaintext refused); write and read data; scale 1→3→1; grow storage; change resources; upgrade 1.0.0→1.0.1; switch to LoadBalancer and back; delete. Asserts the DocumentDB image mode the operator chose. |
 | `tls/` | The cert-manager Issuer TLS mode, with `additionalNames` (changing them reissues the certificate), and a certificate Secret the user brings. Deleting keeps the user's Secret. The default self-signed mode is in `lifecycle/`. |
 | `upgrade/` | Upgrade from the previous chart release (`PREVIOUS_CHART_VERSION`) with a database running. The pre-upgrade hook blocks while an Instance is on an engine version the new release lacks, leaving the old provider in place; then the upgrade goes through, the hook applies the operator CRDs, and the database keeps its data and pods. Deploy with `make deploy-provider-previous` instead of `deploy-provider-e2e`. |
+| `operator-upgrade/` | Upgrade the DocumentDB operator (`PREVIOUS_OPERATOR_VERSION` to `DOCUMENTDB_OPERATOR_VERSION`) under a database pinned to an engine version neither release defaults to. The database stays on its version and its PostgreSQL image, keeps its data, and its pods aren't restarted. Deploy with `make deploy-provider-operator-previous`, which installs the operator on its own and the provider without one. |
 
 `_lib/` holds the `mongosh` client pod and the scripts the steps share:
 `mongosh.sh` runs JavaScript on an instance, `data.sh` writes and checks a
@@ -56,6 +57,13 @@ The upgrade suite starts from the released chart: deploy it with
 `make deploy-provider-previous` (instead of `deploy-provider-e2e`), then run
 `make test-e2e-cluster-upgrade`; the suite upgrades to `IMG` itself. Run it on
 its own cluster, or redeploy the previous release before it.
+
+The operator-upgrade suite likewise starts from `make
+deploy-provider-operator-previous`; run `make
+test-e2e-cluster-operator-upgrade`, and the suite upgrades the operator with
+`make deploy-operator`. When the DocumentDB operator ships a release, bump
+`DOCUMENTDB_OPERATOR_VERSION` (and the chart dependency) and set
+`PREVIOUS_OPERATOR_VERSION` to the release it replaces.
 
 Any cluster with those pieces works, for example a cloud one with its own
 StorageClass and load balancers; push the image to a registry its nodes reach

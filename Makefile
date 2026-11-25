@@ -42,6 +42,12 @@ PROVIDER_IMAGE_PULL_POLICY ?= Never
 # Released chart the e2e-cluster upgrade test starts from.
 PREVIOUS_CHART_VERSION ?= 0.1.0
 
+# DocumentDB operator release the e2e-cluster operator-upgrade test starts
+# from, before upgrading to DOCUMENTDB_OPERATOR_VERSION; and the version
+# deploy-operator installs.
+PREVIOUS_OPERATOR_VERSION ?= 1.2.0
+OPERATOR_VERSION ?= $(DOCUMENTDB_OPERATOR_VERSION)
+
 # cert-manager, which the DocumentDB operator needs, and the CSI hostpath
 # driver the e2e-cluster tests grow volumes with (k3d's local-path can't).
 CERT_MANAGER_VERSION ?= v1.21.3
@@ -218,7 +224,7 @@ deploy-provider-ci: helm-deps ## Deploy the provider via Helm for CI (IMG must a
 # test/e2e-cluster/README.md.
 
 .PHONY: test-e2e-cluster
-test-e2e-cluster: ## Run the e2e-cluster tests against the provider deploy-provider-e2e deployed (all but upgrade).
+test-e2e-cluster: ## Run the e2e-cluster tests against the provider deploy-provider-e2e deployed (all but the upgrade suites).
 	. ./test/vars.sh && chainsaw test --config ./test/e2e-cluster/.chainsaw.yaml \
 		--test-dir ./test/e2e-cluster/lifecycle --test-dir ./test/e2e-cluster/tls
 
@@ -230,6 +236,12 @@ test-e2e-cluster-lifecycle: ## Run the e2e-cluster lifecycle test.
 test-e2e-cluster-upgrade: ## Run the e2e-cluster upgrade test (the previous release deployed by deploy-provider-previous).
 	. ./test/vars.sh && IMG=$(IMG) PREVIOUS_CHART_VERSION=$(PREVIOUS_CHART_VERSION) \
 		chainsaw test --config ./test/e2e-cluster/.chainsaw.yaml ./test/e2e-cluster/upgrade
+
+.PHONY: test-e2e-cluster-operator-upgrade
+test-e2e-cluster-operator-upgrade: ## Run the e2e-cluster operator-upgrade test (the operator deployed by deploy-provider-operator-previous).
+	. ./test/vars.sh && PREVIOUS_OPERATOR_VERSION=$(PREVIOUS_OPERATOR_VERSION) \
+		OPERATOR_VERSION=$(OPERATOR_VERSION) \
+		chainsaw test --config ./test/e2e-cluster/.chainsaw.yaml ./test/e2e-cluster/operator-upgrade
 
 .PHONY: test-e2e-cluster-tls
 test-e2e-cluster-tls: ## Run the e2e-cluster TLS test.
@@ -270,6 +282,30 @@ deploy-provider-previous: ## Deploy the released chart PREVIOUS_CHART_VERSION wi
 		--create-namespace \
 		--namespace provider-system \
 		--set operator.imageMode=$(DOCUMENTDB_IMAGE_MODE) \
+		--wait --timeout 10m
+
+.PHONY: deploy-operator
+deploy-operator: ## Install or upgrade the DocumentDB operator chart OPERATOR_VERSION on its own, with its CRDs, configured as the provider chart configures it.
+	helm show crds oci://ghcr.io/documentdb/documentdb-operator --version $(OPERATOR_VERSION) \
+		| kubectl apply --server-side --force-conflicts -f -
+	helm upgrade --install documentdb-operator oci://ghcr.io/documentdb/documentdb-operator \
+		--version $(OPERATOR_VERSION) \
+		--create-namespace \
+		--namespace documentdb-operator \
+		--set imageMode=$(DOCUMENTDB_IMAGE_MODE) \
+		--set-string 'cloudnative-pg.config.data.INHERITED_LABELS=core.openeverest.io/*' \
+		--wait --timeout 10m
+
+.PHONY: deploy-provider-operator-previous
+deploy-provider-operator-previous: helm-deps ## Deploy the DocumentDB operator PREVIOUS_OPERATOR_VERSION on its own, and the provider without one, for the e2e-cluster operator-upgrade test.
+	$(MAKE) deploy-operator OPERATOR_VERSION=$(PREVIOUS_OPERATOR_VERSION)
+	helm upgrade --install provider-documentdb $(CHART_DIR) \
+		--create-namespace \
+		--namespace provider-system \
+		--set image.repository=$(_IMG_REPO) \
+		--set image.tag=$(_IMG_TAG) \
+		--set image.pullPolicy=$(PROVIDER_IMAGE_PULL_POLICY) \
+		--set operator.enabled=false \
 		--wait --timeout 10m
 
 ##@ Local Development Cluster

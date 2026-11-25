@@ -122,6 +122,32 @@ Job applies the bundled DocumentDB operator's CRDs, which Helm installs but neve
 so the new operator starts with the CRDs it needs. CloudNativePG's CRDs are chart templates
 that Helm upgrades itself. With `operator.enabled=false` the hook only runs the check.
 
+### Operator upgrades
+
+A new DocumentDB or CloudNativePG operator, whether it comes with a provider release or
+you manage it yourself, keeps running instances on their images:
+
+- The DocumentDB extension and gateway images follow `spec.version`, which the provider
+  always sets. A new operator's default DocumentDB version applies to nothing.
+- The PostgreSQL image (ImageVolume mode) is the provider's `postgresImage` value,
+  `ghcr.io/cloudnative-pg/postgresql:18.3-system-trixie` by default, not the operator's
+  `POSTGRES_IMAGE` setting or CloudNativePG's built-in default, which change between
+  releases. When it changes for a running instance (a provider release with a new default,
+  or a new `postgresImage`), the provider holds the change and asks for a maintenance window:
+  the Instance lists it in `status.pendingMaintenance` as a `RollingRestart` action with a
+  `postgres-image-…` token. Approve it with `spec.maintenance.approved: <token>`, or let it
+  through with `spec.maintenance.autoApproveUpTo: RollingRestart`. Until then the instance
+  stays on its image. In combined image mode the combined image follows `spec.version`, and
+  `postgresImage` is not used.
+- CloudNativePG updates its instance manager in place, so upgrading it does not restart the
+  database pods.
+
+What the provider can't hold, and may restart pods when an operator release changes it: the
+operator's OpenTelemetry collector image (when monitoring is enabled), and the gateway
+sidecar's settings that the operator restarts pods for itself. The upgrade from operator
+1.2.0 to 1.2.1 restarts nothing; the `operator-upgrade` e2e suite checks each new operator
+release.
+
 Uninstalling the chart does **not** delete running `Instance` resources or their data.
 
 ## Usage
