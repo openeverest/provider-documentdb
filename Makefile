@@ -34,6 +34,13 @@ K3D_CLUSTER_NAME ?= provider-documentdb-test
 # imageVolume or combined (the chart's operator.imageMode).
 DOCUMENTDB_IMAGE_MODE ?= auto
 
+# Pull policy of the provider image in the e2e-cluster tests: Never for an
+# image imported into k3d, Always for one in a registry.
+PROVIDER_IMAGE_PULL_POLICY ?= Never
+
+# Released chart the e2e-cluster upgrade test starts from.
+PREVIOUS_CHART_VERSION ?= 0.1.0
+
 # cert-manager, which the DocumentDB operator needs, and the CSI hostpath
 # driver the e2e-cluster tests grow volumes with (k3d's local-path can't).
 CERT_MANAGER_VERSION ?= v1.21.3
@@ -88,6 +95,11 @@ manifests: controller-gen ## Generate RBAC manifests using controller-gen from k
 	} > config/rbac/role.yaml.tmp
 	@mv config/rbac/role.yaml.tmp config/rbac/role.yaml
 
+.PHONY: operator-crds
+operator-crds: ## Copy the CRDs of the DocumentDB operator version pinned in go.mod.
+	go mod download github.com/documentdb/documentdb-operator
+	@cat "$$(go list -m -f '{{.Dir}}' github.com/documentdb/documentdb-operator)"/config/crd/bases/documentdb.io_*.yaml > internal/operatorcrds/crd.yaml
+
 .PHONY: helm-sync-rbac
 helm-sync-rbac: yq ## Sync generated RBAC rules into the Helm chart.
 	@echo "Syncing RBAC rules from config/rbac/role.yaml to Helm chart..."
@@ -99,18 +111,19 @@ helm-sync-rbac: yq ## Sync generated RBAC rules into the Helm chart.
 	@echo "Done."
 
 .PHONY: generate
-generate: manifests helm-sync-rbac ## Run all code generation (RBAC + Helm sync + provider spec, incl. spec.monitoring, from definition/).
+generate: manifests operator-crds helm-sync-rbac ## Run all code generation (RBAC + operator CRDs + Helm sync + provider spec, incl. spec.monitoring, from definition/).
 	go generate ./...
 	@echo "All generation complete."
 
 .PHONY: verify
 verify: ## Verify that generated files are up-to-date (for CI).
 	@$(MAKE) generate
-	@if git diff --quiet -- config/ definition/ $(CHART_DIR)/generated/; then \
+	@if git diff --quiet -- config/ definition/ internal/operatorcrds/ $(CHART_DIR)/generated/; then \
 		echo "Generated files are up-to-date."; \
 	else \
 		echo "ERROR: Generated files are out of date. Run 'make generate' and commit the changes."; \
 		git diff -- config/ definition/ $(CHART_DIR)/generated/; \
+		git diff --stat -- internal/operatorcrds/; \
 		exit 1; \
 	fi
 
@@ -211,6 +224,11 @@ test-e2e-cluster: ## Run all e2e-cluster tests against the current cluster.
 test-e2e-cluster-lifecycle: ## Run the e2e-cluster lifecycle test.
 	. ./test/vars.sh && chainsaw test --config ./test/e2e-cluster/.chainsaw.yaml ./test/e2e-cluster/lifecycle
 
+.PHONY: test-e2e-cluster-upgrade
+test-e2e-cluster-upgrade: ## Run the e2e-cluster upgrade test (the previous release deployed by deploy-provider-previous).
+	. ./test/vars.sh && IMG=$(IMG) PREVIOUS_CHART_VERSION=$(PREVIOUS_CHART_VERSION) \
+		chainsaw test --config ./test/e2e-cluster/.chainsaw.yaml ./test/e2e-cluster/upgrade
+
 .PHONY: test-e2e-cluster-tls
 test-e2e-cluster-tls: ## Run the e2e-cluster TLS test.
 	. ./test/vars.sh && chainsaw test --config ./test/e2e-cluster/.chainsaw.yaml ./test/e2e-cluster/tls
@@ -239,7 +257,16 @@ deploy-provider-e2e: helm-deps ## Deploy the provider with the DocumentDB operat
 		--namespace provider-system \
 		--set image.repository=$(_IMG_REPO) \
 		--set image.tag=$(_IMG_TAG) \
-		--set image.pullPolicy=Never \
+		--set image.pullPolicy=$(PROVIDER_IMAGE_PULL_POLICY) \
+		--set operator.imageMode=$(DOCUMENTDB_IMAGE_MODE) \
+		--wait --timeout 10m
+
+.PHONY: deploy-provider-previous
+deploy-provider-previous: ## Deploy the released chart PREVIOUS_CHART_VERSION with the DocumentDB operator, for the e2e-cluster upgrade test.
+	helm upgrade --install provider-documentdb oci://ghcr.io/openeverest/charts/provider-documentdb \
+		--version $(PREVIOUS_CHART_VERSION) \
+		--create-namespace \
+		--namespace provider-system \
 		--set operator.imageMode=$(DOCUMENTDB_IMAGE_MODE) \
 		--wait --timeout 10m
 

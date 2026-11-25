@@ -1,0 +1,134 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: upgrade
+spec:
+  description: |
+    Upgrade from the previous release of the chart (PREVIOUS_CHART_VERSION,
+    installed by the deploy-provider-previous Make target) to this one, with a
+    database running. The pre-upgrade hook blocks the upgrade while an Instance
+    is on an engine version the new catalog lacks, and lets it through once
+    that Instance is gone, applying the DocumentDB operator's CRDs. The
+    database stays Ready, keeps its data, and its pods aren't restarted.
+  catch:
+    - script:
+        content: kubectl -n provider-system get deploy,job,pods -o wide
+    - script:
+        content: kubectl -n provider-system logs -l app.kubernetes.io/component=preflight --tail=100
+    - script:
+        content: helm -n provider-system history provider-documentdb
+    - script:
+        content: kubectl -n $NAMESPACE get instance,documentdb,clusters.postgresql.cnpg.io,pods -o wide
+    - script:
+        content: kubectl -n $NAMESPACE get instance -o yaml
+    - podLogs:
+        namespace: provider-system
+        selector: app.kubernetes.io/name=provider-documentdb
+        tail: 100
+  steps:
+    - name: previous-release-running
+      try:
+        - script:
+            content: |
+              set -eu
+              test -n "$PREVIOUS_CHART_VERSION"
+              image=$(kubectl -n provider-system get deploy provider-documentdb -o jsonpath='{.spec.template.spec.containers[0].image}')
+              echo "provider image: $image"
+              test "${image##*:}" = "$PREVIOUS_CHART_VERSION"
+        - assert:
+            file: ../lifecycle/00-assert.yaml
+        - apply:
+            file: ../_lib/mongosh.yaml
+        - assert:
+            resource:
+              apiVersion: v1
+              kind: Pod
+              metadata:
+                name: mongosh
+              status:
+                phase: Running
+
+    - name: create-on-previous-release
+      try:
+        - apply:
+            file: 10-create-instance.yaml
+        - assert:
+            timeout: 10m
+            file: 10-assert.yaml
+        - script:
+            content: |
+              set -eu
+              sh ../_lib/data.sh write docdb
+              sh ../_lib/data.sh check docdb
+              # Remember the database pods, to check the upgrade leaves them be.
+              kubectl -n $NAMESPACE get pods -l cnpg.io/cluster=docdb,cnpg.io/podRole=instance \
+                -o jsonpath='{range .items[*]}{.metadata.uid}/{.status.containerStatuses[*].restartCount} {end}' \
+                > /tmp/upgrade-e2e-pods-$NAMESPACE
+              cat /tmp/upgrade-e2e-pods-$NAMESPACE
+
+    - name: upgrade-blocked
+      try:
+        - script:
+            content: kubectl delete validatingwebhookconfiguration provider-documentdb.openeverest.io
+        - apply:
+            file: 20-stale-instance.yaml
+        - script:
+            timeout: 15m
+            content: |
+              set -u
+              if make -C "$PROVIDER_ROOT_PATH" deploy-provider-e2e > /tmp/upgrade-e2e-blocked.log 2>&1; then
+                cat /tmp/upgrade-e2e-blocked.log
+                echo "the upgrade went through despite an Instance on a removed version" >&2
+                exit 1
+              fi
+              set -e
+              tail -n 5 /tmp/upgrade-e2e-blocked.log
+              logs=$(kubectl -n provider-system logs job/provider-documentdb-preflight)
+              echo "$logs"
+              echo "$logs" | grep -q "\[$NAMESPACE/stale\]"
+              echo "$logs" | grep -q 'Result: BLOCKED'
+              # Nothing was applied: the previous provider still runs.
+              image=$(kubectl -n provider-system get deploy provider-documentdb -o jsonpath='{.spec.template.spec.containers[0].image}')
+              test "${image##*:}" = "$PREVIOUS_CHART_VERSION"
+        - delete:
+            ref:
+              apiVersion: core.openeverest.io/v1alpha1
+              kind: Instance
+              name: stale
+
+    - name: upgrade
+      try:
+        - script:
+            timeout: 15m
+            content: |
+              set -eu
+              make -C "$PROVIDER_ROOT_PATH" deploy-provider-e2e
+              image=$(kubectl -n provider-system get deploy provider-documentdb -o jsonpath='{.spec.template.spec.containers[0].image}')
+              echo "provider image: $image"
+              test "$image" = "$IMG"
+              # The hook applied the operator's CRDs, which Helm doesn't upgrade.
+              for crd in backups dbs scheduledbackups; do
+                kubectl get crd $crd.documentdb.io -o jsonpath='{.metadata.managedFields[*].manager}' \
+                  | tr ' ' '\n' | grep -qx provider-documentdb \
+                  || { echo "the hook did not apply $crd.documentdb.io" >&2; exit 1; }
+              done
+              # The webhook the blocked step removed is back.
+              kubectl get validatingwebhookconfiguration provider-documentdb.openeverest.io
+        - assert:
+            file: ../lifecycle/00-assert.yaml
+        - assert:
+            timeout: 5m
+            file: 10-assert.yaml
+        - script:
+            timeout: 5m
+            content: |
+              set -eu
+              sh ../_lib/data.sh check docdb
+              # Give the new provider a few reconciles to change anything it would.
+              sleep 60
+              after=$(kubectl -n $NAMESPACE get pods -l cnpg.io/cluster=docdb,cnpg.io/podRole=instance \
+                -o jsonpath='{range .items[*]}{.metadata.uid}/{.status.containerStatuses[*].restartCount} {end}')
+              before=$(cat /tmp/upgrade-e2e-pods-$NAMESPACE)
+              echo "pods before: $before"
+              echo "pods after:  $after"
+              test "$before" = "$after"

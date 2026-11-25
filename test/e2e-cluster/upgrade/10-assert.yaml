@@ -1,0 +1,18 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: docdb
+(metadata.generation == status.observedGeneration): true
+status:
+  phase: Provisioned
+  (conditions[?type == 'Ready'].status | [0]): "True"
+  (components[?name == 'engine'] | [0].readyReplicas): 1
+  connectionSecretRef:
+    name: docdb-conn
+---
+apiVersion: documentdb.io/v1
+kind: DocumentDB
+metadata:
+  name: docdb
+status:
+  status: Cluster in healthy state
