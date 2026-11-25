@@ -1,0 +1,18 @@
+# The upgrade migrates the extension schema irreversibly: it waits for
+# approval and the DocumentDB keeps the running version.
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: docdb
+status:
+  (conditions[?type == 'MaintenancePending'].status | [0]): "True"
+  (length(pendingMaintenance)): 1
+  (pendingMaintenance[0].severity): RollingRestart
+  (pendingMaintenance[0].approvalToken): upgrade-to-1.0.1
+---
+apiVersion: documentdb.io/v1
+kind: DocumentDB
+metadata:
+  name: docdb
+spec:
+  documentDBVersion: 1.0.0

@@ -63,7 +63,7 @@ provider itself is covered under [Installation](#installation).
 | Provisioning | ✅ | One topology, `replicaSet`: a primary and up to two streaming replicas |
 | Horizontal scaling | ✅ | 1 to 3 instances. 3 is the default; a replica is promoted when the primary fails |
 | Vertical scaling (CPU / memory) | ✅ | `resources.limits` is the pod's envelope; the operator splits it between PostgreSQL and the gateway and runs them with requests equal to limits. Rolling restart: waits for [maintenance approval](#maintenance) |
-| Version upgrades | ✅ | Change `spec.version`; the extension schema follows the binary (`schemaVersion: auto`). Downgrades are refused by the operator |
+| Version upgrades | ✅ | Change `spec.version`; the extension schema follows the binary (`schemaVersion: auto`). Rolling restart and an irreversible schema migration: waits for [maintenance approval](#maintenance). Downgrades are refused by the operator |
 | Monitoring | ✅ | Prometheus metrics for ExtensionManaged monitoring classes, see [Monitoring](#monitoring). Adding the first destination or removing the last one rolls the pods and waits for [maintenance approval](#maintenance) |
 | Scheduling policy | ✅ | `schedulingPolicy`: node selector, tolerations and affinity. Rolling restart: waits for [maintenance approval](#maintenance) |
 | TLS | ✅ | Always on: the gateway refuses unencrypted connections. See [TLS](#tls) |
@@ -293,6 +293,7 @@ DocumentDB keeps running with the current settings, the Instance reports
 |---|---|
 | CPU or memory (`resources.limits`) | Rolling restart |
 | Scheduling policy (`schedulingPolicy`) | Rolling restart |
+| Version (`spec.version`), token `upgrade-to-<version>` | Rolling restart; the extension schema migration cannot be undone |
 | Adding the first or removing the last metrics destination (collector sidecar) | Rolling restart |
 
 Everything else applies at once: replicas, storage growth, backups, the Service type and
@@ -383,7 +384,8 @@ gets the credentials of the instance it was taken from.
 Source of truth: [definition/versions.yaml](definition/versions.yaml).
 
 Upgrades go forward only: once the extension schema is updated, the operator refuses an
-older version.
+older version. A version change waits for [maintenance approval](#maintenance) as the
+`upgrade-to-<version>` action; until then the instance keeps running its version.
 
 ## Configuration
 

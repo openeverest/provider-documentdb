@@ -5,6 +5,8 @@ metadata:
 spec:
   providerRef:
     name: documentdb
+  # The upgrade-version step moves it to 1.0.1.
+  version: "1.0.0"
   topology:
     type: replicaSet
   components:

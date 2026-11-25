@@ -1,0 +1,18 @@
+# Held: the DocumentDB keeps the running version.
+apiVersion: documentdb.io/v1
+kind: DocumentDB
+metadata:
+  name: test-instance
+spec:
+  documentDBVersion: "1.0.0"
+---
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: test-instance
+status:
+  (conditions[?type == 'MaintenancePending'].status | [0]): "True"
+  (length(pendingMaintenance)): 1
+  (pendingMaintenance[0].severity): RollingRestart
+  (pendingMaintenance[0].approvalToken): upgrade-to-1.0.1
+  (contains(pendingMaintenance[0].description, 'cannot be undone')): true
