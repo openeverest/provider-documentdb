@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -26,7 +27,9 @@ func serviceContext(t *testing.T, want corev1.ServiceType, objs ...client.Object
 	engine := in.Spec.Components[common.ComponentEngine]
 	engine.Service = &corev1alpha1.Service{ServiceType: want}
 	in.Spec.Components[common.ComponentEngine] = engine
-	cl := fake.NewClientBuilder().WithObjects(objs...).Build()
+	scheme := runtime.NewScheme()
+	require.NoError(t, corev1.AddToScheme(scheme))
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).Build()
 	return controller.NewContext(context.Background(), cl, in, common.ProviderName)
 }
 
