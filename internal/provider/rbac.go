@@ -17,6 +17,13 @@ package provider
 // The provider generates the credentials Secret and reads the gateway CA.
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
 
+// Startup gate (provider-runtime holds a new build until the installed
+// OpenEverest supports its contract version, then records that version on
+// this provider's Provider; keep resourceNames in sync with
+// common.ProviderName):
+// +kubebuilder:rbac:groups=apiextensions.k8s.io,resources=customresourcedefinitions,resourceNames=providers.core.openeverest.io,verbs=get
+// +kubebuilder:rbac:groups=core.openeverest.io,resources=providers/status,resourceNames=documentdb,verbs=patch
+
 // DocumentDB operator resources.
 // +kubebuilder:rbac:groups=documentdb.io,resources=dbs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=documentdb.io,resources=dbs/status,verbs=get
