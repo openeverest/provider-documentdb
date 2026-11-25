@@ -91,6 +91,26 @@ jobs:
       - name: Lint Helm chart
         run: helm lint charts/provider-documentdb
 
+      - name: Verify preflight hook rendering
+        run: |
+          helm dependency build charts/provider-documentdb
+          helm template test charts/provider-documentdb \
+            --api-versions cert-manager.io/v1/Certificate \
+            --show-only templates/preflight-hook.yaml > /tmp/hook.yaml
+          grep -q -- '--preflight-spec=/preflight/provider-spec.yaml' /tmp/hook.yaml
+          grep -q 'release:' /tmp/hook.yaml || { echo 'provider-spec release block missing from hook ConfigMap'; exit 1; }
+          grep -q -- '--apply-operator-crds' /tmp/hook.yaml || { echo 'preflight hook does not upgrade the operator CRDs'; exit 1; }
+
+      # The hook upgrades the operator CRDs from the copy embedded in the
+      # provider; it must match the CRDs of the operator the chart bundles.
+      - name: Verify embedded operator CRDs match the bundled operator chart
+        run: |
+          tmp=$(mktemp -d)
+          tar -xzf charts/provider-documentdb/charts/documentdb-operator-*.tgz -C "$tmp" documentdb-operator/crds
+          cat "$tmp"/documentdb-operator/crds/documentdb.io_*.yaml \
+            | diff -q - internal/operatorcrds/crd.yaml \
+            || { echo '::error::internal/operatorcrds/crd.yaml differs from the bundled documentdb-operator chart CRDs. Align the operator version in go.mod with the chart dependency and run make generate.'; exit 1; }
+
   # Each integration suite runs as a separate job through the reusable
   # integration-test.yaml workflow. To add a suite, create a directory under
   # test/integration/, add a matching test-integration-<suite> Make target,
@@ -135,3 +155,25 @@ jobs:
     with:
       make_target: test-e2e-cluster-tls
       suite: tls
+
+  # Upgrade from the previous chart release: the pre-upgrade hook's preflight
+  # and its operator CRD apply.
+  test-e2e-cluster-upgrade:
+    name: E2E cluster / upgrade
+    needs: [lint, build, verify]
+    uses: ./.github/workflows/e2e-cluster-test.yaml
+    with:
+      make_target: test-e2e-cluster-upgrade
+      suite: upgrade
+      deploy_target: deploy-provider-previous
+
+  # Upgrade the DocumentDB operator under a running database: the provider's
+  # image pins keep the database's pods as they are.
+  test-e2e-cluster-operator-upgrade:
+    name: E2E cluster / operator upgrade
+    needs: [lint, build, verify]
+    uses: ./.github/workflows/e2e-cluster-test.yaml
+    with:
+      make_target: test-e2e-cluster-operator-upgrade
+      suite: operator-upgrade
+      deploy_target: deploy-provider-operator-previous

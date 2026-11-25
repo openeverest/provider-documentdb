@@ -25,7 +25,8 @@ type podEnvelope struct {
 // with a token derived from the live and the desired value, so approving one
 // change never authorizes a later, different one. Changes that do not
 // restart pods (replicas, storage growth, backups, the Service type,
-// additionalNames) apply at once. The version is gated separately.
+// additionalNames) apply at once. The version and the PostgreSQL image are
+// gated separately.
 func holdDisruptiveChanges(c *controller.Context, live, desired *dbv1.DocumentDB) error {
 	if live.ResourceVersion == "" {
 		// Creating: nothing runs yet.

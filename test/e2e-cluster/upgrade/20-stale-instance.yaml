@@ -1,0 +1,16 @@
+# An Instance on an engine version the target catalog doesn't have. The
+# provider's admission webhook would refuse it, so the test removes the webhook
+# first; the upgrade recreates it.
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: stale
+spec:
+  providerRef:
+    name: documentdb
+  version: "0.0.1"
+  components:
+    engine:
+      replicas: 1
+      storage:
+        size: 10Gi

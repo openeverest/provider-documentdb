@@ -1,0 +1,17 @@
+# The provider runs without the DocumentDB operator, which runs on its own (see
+# the deploy-provider-operator-previous and deploy-operator Make targets).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: provider-documentdb
+  namespace: provider-system
+status:
+  readyReplicas: 1
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: documentdb-operator
+  namespace: documentdb-operator
+status:
+  readyReplicas: 1

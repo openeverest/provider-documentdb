@@ -1,0 +1,98 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: operator-upgrade
+spec:
+  description: |
+    Upgrade the DocumentDB operator, from PREVIOUS_OPERATOR_VERSION (installed
+    on its own by the deploy-provider-operator-previous Make target) to
+    OPERATOR_VERSION, under a running database pinned to an engine version
+    that isn't the default of either release. The provider pins the engine
+    and PostgreSQL images, so the database stays on its version, keeps its
+    data, and its pods aren't restarted.
+  catch:
+    - script:
+        content: kubectl -n documentdb-operator get deploy,pods -o wide
+    - script:
+        content: helm -n documentdb-operator history documentdb-operator
+    - script:
+        content: kubectl -n $NAMESPACE get instance,documentdb,clusters.postgresql.cnpg.io,pods -o wide
+    - script:
+        content: kubectl -n $NAMESPACE get instance,clusters.postgresql.cnpg.io -o yaml
+    - podLogs:
+        namespace: documentdb-operator
+        selector: app=documentdb-operator
+        tail: 100
+  steps:
+    - name: previous-operator-running
+      try:
+        - script:
+            content: |
+              set -eu
+              test -n "$PREVIOUS_OPERATOR_VERSION"
+              test -n "$OPERATOR_VERSION"
+              test "$PREVIOUS_OPERATOR_VERSION" != "$OPERATOR_VERSION"
+              image=$(kubectl -n documentdb-operator get deploy documentdb-operator -o jsonpath='{.spec.template.spec.containers[0].image}')
+              echo "operator image: $image"
+              test "${image##*:}" = "$PREVIOUS_OPERATOR_VERSION"
+        - assert:
+            file: 00-assert.yaml
+        - apply:
+            file: ../_lib/mongosh.yaml
+        - assert:
+            resource:
+              apiVersion: v1
+              kind: Pod
+              metadata:
+                name: mongosh
+              status:
+                phase: Running
+
+    - name: create-on-previous-operator
+      try:
+        - apply:
+            file: 10-create-instance.yaml
+        - assert:
+            timeout: 10m
+            file: 10-assert.yaml
+        - script:
+            timeout: 5m
+            content: |
+              set -eu
+              sh ../_lib/image.sh docdb 1.0.0
+              sh ../_lib/data.sh write docdb
+              sh ../_lib/data.sh check docdb
+              sh state.sh docdb > /tmp/operator-upgrade-e2e-$NAMESPACE
+              cat /tmp/operator-upgrade-e2e-$NAMESPACE
+              # The provider set the PostgreSQL image, rather than leaving it to
+              # the operator's default.
+              test -n "$(kubectl -n $NAMESPACE get documentdb docdb -o jsonpath='{.spec.image.postgres}')"
+
+    - name: upgrade-operator
+      try:
+        - script:
+            timeout: 15m
+            content: |
+              set -eu
+              make -C "$PROVIDER_ROOT_PATH" deploy-operator OPERATOR_VERSION="$OPERATOR_VERSION"
+              image=$(kubectl -n documentdb-operator get deploy documentdb-operator -o jsonpath='{.spec.template.spec.containers[0].image}')
+              echo "operator image: $image"
+              test "${image##*:}" = "$OPERATOR_VERSION"
+        - assert:
+            file: 00-assert.yaml
+        - assert:
+            timeout: 5m
+            file: 10-assert.yaml
+        - script:
+            timeout: 5m
+            content: |
+              set -eu
+              sh ../_lib/data.sh check docdb
+              # Give the new operator a few reconciles to change anything it would.
+              sleep 60
+              sh ../_lib/image.sh docdb 1.0.0
+              after=$(sh state.sh docdb)
+              before=$(cat /tmp/operator-upgrade-e2e-$NAMESPACE)
+              echo "before: $before"
+              echo "after:  $after"
+              test "$before" = "$after"

@@ -1,0 +1,19 @@
+# Pinned to 1.0.0, which isn't the default of either operator release, so
+# nothing but the pin keeps the engine on it.
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: docdb
+spec:
+  providerRef:
+    name: documentdb
+  version: "1.0.0"
+  components:
+    engine:
+      replicas: 1
+      resources:
+        limits:
+          cpu: 400m
+          memory: 1Gi
+      storage:
+        size: 10Gi

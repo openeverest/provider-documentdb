@@ -115,6 +115,40 @@ helm upgrade provider-documentdb oci://ghcr.io/openeverest/charts/provider-docum
 helm uninstall provider-documentdb --namespace everest-system
 ```
 
+`helm upgrade` runs a pre-upgrade hook first: a Job with the new provider image checks the
+live Instances against the new release (for example, an engine version it drops) and aborts
+the upgrade, changing nothing, if any would be left unsupported. Its log lists them:
+`kubectl -n <namespace> logs job/provider-documentdb-preflight`. When the check passes, the
+Job applies the bundled DocumentDB operator's CRDs, which Helm installs but never upgrades,
+so the new operator starts with the CRDs it needs. CloudNativePG's CRDs are chart templates
+that Helm upgrades itself. With `operator.enabled=false` the hook only runs the check.
+
+### Operator upgrades
+
+A new DocumentDB or CloudNativePG operator, whether it comes with a provider release or
+you manage it yourself, keeps running instances on their images:
+
+- The DocumentDB extension and gateway images follow `spec.version`, which the provider
+  always sets. A new operator's default DocumentDB version applies to nothing.
+- The PostgreSQL image (ImageVolume mode) is the provider's `postgresImage` value,
+  `ghcr.io/cloudnative-pg/postgresql:18.3-system-trixie` by default, not the operator's
+  `POSTGRES_IMAGE` setting or CloudNativePG's built-in default, which change between
+  releases. When it changes for a running instance (a provider release with a new default,
+  or a new `postgresImage`), the provider holds the change and asks for a maintenance window:
+  the Instance lists it in `status.pendingMaintenance` as a `RollingRestart` action with a
+  `postgres-image-…` token. Approve it with `spec.maintenance.approved: <token>`, or let it
+  through with `spec.maintenance.autoApproveUpTo: RollingRestart`. Until then the instance
+  stays on its image. In combined image mode the combined image follows `spec.version`, and
+  `postgresImage` is not used.
+- CloudNativePG updates its instance manager in place, so upgrading it does not restart the
+  database pods.
+
+What the provider can't hold, and may restart pods when an operator release changes it: the
+operator's OpenTelemetry collector image (when monitoring is enabled), and the gateway
+sidecar's settings that the operator restarts pods for itself. The upgrade from operator
+1.2.0 to 1.2.1 restarts nothing; the `operator-upgrade` e2e suite checks each new operator
+release.
+
 Uninstalling the chart does **not** delete running `Instance` resources or their data.
 
 ## Usage
@@ -372,7 +406,7 @@ local k3d setup, running against a cluster you already have, and every `dev/.env
 
 ```bash
 make dev-up             # local cluster + Tilt dev environment (see dev/README.md)
-make generate           # RBAC, provider spec, Helm chart sync
+make generate           # RBAC, operator CRDs, provider spec, Helm chart sync
 make run                # run the provider locally against the cluster
 make test-unit
 make test-integration   # chainsaw suites under test/integration/
@@ -394,6 +428,7 @@ code generation, and the backup/restore interfaces are documented once for all p
 | `cmd/provider/` | Entry point |
 | `internal/provider/` | `ProviderInterface` implementation, backup interfaces, RBAC markers |
 | `internal/common/` | Component name constants |
+| `internal/operatorcrds/` | The DocumentDB operator's CRDs the pre-upgrade hook applies (`crd.yaml` is copied by `make generate` from the operator module in `go.mod`) |
 | `definition/` | Provider identity, component types, versions, topologies, backup classes, monitoring contract |
 | `charts/provider-documentdb/` | Helm chart (`generated/` is produced by `make generate`) |
 | `config/rbac/role.yaml` | Generated `ClusterRole` — do not edit |
@@ -415,8 +450,9 @@ code generation, and the backup/restore interfaces are documented once for all p
   DocumentDB operator and CloudNativePG, and connect with `mongosh`. See
   [test/e2e-cluster/README.md](test/e2e-cluster/README.md).
 - **CI** — `.github/workflows/ci.yaml` runs lint, build, unit tests, generated-file
-  verification, Helm lint, each integration suite, and the e2e-cluster suites (lifecycle in
-  both image modes, TLS) on every pull request.
+  verification, Helm lint (and that the embedded operator CRDs match the bundled operator
+  chart), each integration suite, and the e2e-cluster suites (lifecycle in both image modes,
+  TLS, upgrade from the previous release) on every pull request.
 
 ## Troubleshooting
 

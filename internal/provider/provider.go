@@ -29,6 +29,10 @@ var (
 // Provider implements controller.ProviderInterface for DocumentDB.
 type Provider struct {
 	controller.BaseProvider
+
+	// PostgresImage is the PostgreSQL image instances run on in ImageVolume
+	// mode; empty means DefaultPostgresImage.
+	PostgresImage string
 }
 
 // New creates a new Provider instance.
@@ -90,6 +94,15 @@ func (p *Provider) Sync(c *controller.Context) error {
 	}
 
 	db := buildDocumentDB(c, params, secretName, monitoring)
+	target := p.PostgresImage
+	if target == "" {
+		target = DefaultPostgresImage
+	}
+	image, err := postgresImage(c, target)
+	if err != nil {
+		return err
+	}
+	setPostgresImage(db, image)
 	if err := holdDisruptiveChanges(c, live, db); err != nil {
 		return err
 	}
