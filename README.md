@@ -114,6 +114,14 @@ helm upgrade provider-documentdb oci://ghcr.io/openeverest/charts/provider-docum
 helm uninstall provider-documentdb --namespace everest-system
 ```
 
+`helm upgrade` runs a pre-upgrade hook first: a Job with the new provider image checks the
+live Instances against the new release (for example, an engine version it drops) and aborts
+the upgrade, changing nothing, if any would be left unsupported. Its log lists them:
+`kubectl -n <namespace> logs job/provider-documentdb-preflight`. When the check passes, the
+Job applies the bundled DocumentDB operator's CRDs, which Helm installs but never upgrades,
+so the new operator starts with the CRDs it needs. CloudNativePG's CRDs are chart templates
+that Helm upgrades itself. With `operator.enabled=false` the hook only runs the check.
+
 Uninstalling the chart does **not** delete running `Instance` resources or their data.
 
 ## Usage
@@ -341,7 +349,7 @@ local k3d setup, running against a cluster you already have, and every `dev/.env
 
 ```bash
 make dev-up             # local cluster + Tilt dev environment (see dev/README.md)
-make generate           # RBAC, provider spec, Helm chart sync
+make generate           # RBAC, operator CRDs, provider spec, Helm chart sync
 make run                # run the provider locally against the cluster
 make test-unit
 make test-integration   # chainsaw suites under test/integration/
@@ -363,6 +371,7 @@ code generation, and the backup/restore interfaces are documented once for all p
 | `cmd/provider/` | Entry point |
 | `internal/provider/` | `ProviderInterface` implementation, backup interfaces, RBAC markers |
 | `internal/common/` | Component name constants |
+| `internal/operatorcrds/` | The DocumentDB operator's CRDs the pre-upgrade hook applies (`crd.yaml` is copied by `make generate` from the operator module in `go.mod`) |
 | `definition/` | Provider identity, component types, versions, topologies, backup classes, monitoring contract |
 | `charts/provider-documentdb/` | Helm chart (`generated/` is produced by `make generate`) |
 | `config/rbac/role.yaml` | Generated `ClusterRole` — do not edit |
@@ -384,8 +393,9 @@ code generation, and the backup/restore interfaces are documented once for all p
   DocumentDB operator and CloudNativePG, and connect with `mongosh`. See
   [test/e2e-cluster/README.md](test/e2e-cluster/README.md).
 - **CI** — `.github/workflows/ci.yaml` runs lint, build, unit tests, generated-file
-  verification, Helm lint, each integration suite, and the e2e-cluster suites (lifecycle in
-  both image modes, TLS) on every pull request.
+  verification, Helm lint (and that the embedded operator CRDs match the bundled operator
+  chart), each integration suite, and the e2e-cluster suites (lifecycle in both image modes,
+  TLS, upgrade from the previous release) on every pull request.
 
 ## Troubleshooting
 

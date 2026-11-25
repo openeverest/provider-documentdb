@@ -21,9 +21,10 @@ IMG ?= ghcr.io/openeverest/provider-documentdb-dev:latest
 # Image URL for OpenEverest controller used in integration tests (must be pre-built).
 OPENEVEREST_CONTROLLER_IMG ?= ghcr.io/openeverest/openeverest-controller-dev:0.0.0
 
-# Split IMG into repository and tag for Helm values
-_IMG_REPO = $(firstword $(subst :, ,$(IMG)))
+# Split IMG into repository and tag for Helm values, at the last colon so a
+# registry port (localhost:5000/...) stays in the repository.
 _IMG_TAG  = $(lastword $(subst :, ,$(IMG)))
+_IMG_REPO = $(patsubst %:$(_IMG_TAG),%,$(IMG))
 
 # k3d cluster config, and its name (must match the config's metadata.name).
 # The e2e-cluster tests use test/e2e-cluster/k3d_config.yaml.
@@ -217,8 +218,9 @@ deploy-provider-ci: helm-deps ## Deploy the provider via Helm for CI (IMG must a
 # test/e2e-cluster/README.md.
 
 .PHONY: test-e2e-cluster
-test-e2e-cluster: ## Run all e2e-cluster tests against the current cluster.
-	. ./test/vars.sh && chainsaw test --config ./test/e2e-cluster/.chainsaw.yaml ./test/e2e-cluster
+test-e2e-cluster: ## Run the e2e-cluster tests against the provider deploy-provider-e2e deployed (all but upgrade).
+	. ./test/vars.sh && chainsaw test --config ./test/e2e-cluster/.chainsaw.yaml \
+		--test-dir ./test/e2e-cluster/lifecycle --test-dir ./test/e2e-cluster/tls
 
 .PHONY: test-e2e-cluster-lifecycle
 test-e2e-cluster-lifecycle: ## Run the e2e-cluster lifecycle test.

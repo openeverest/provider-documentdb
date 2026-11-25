@@ -16,6 +16,7 @@ that the database works.
 |---|---|
 | `lifecycle/` | Create; connect (TLS verified, hostname included; plaintext refused); write and read data; scale 1→3→1; grow storage; change resources; upgrade 1.0.0→1.0.1; switch to LoadBalancer and back; delete. Asserts the DocumentDB image mode the operator chose. |
 | `tls/` | The cert-manager Issuer TLS mode, with `additionalNames` (changing them reissues the certificate), and a certificate Secret the user brings. Deleting keeps the user's Secret. The default self-signed mode is in `lifecycle/`. |
+| `upgrade/` | Upgrade from the previous chart release (`PREVIOUS_CHART_VERSION`) with a database running. The pre-upgrade hook blocks while an Instance is on an engine version the new release lacks, leaving the old provider in place; then the upgrade goes through, the hook applies the operator CRDs, and the database keeps its data and pods. Deploy with `make deploy-provider-previous` instead of `deploy-provider-e2e`. |
 
 `_lib/` holds the `mongosh` client pod and the scripts the steps share:
 `mongosh.sh` runs JavaScript on an instance, `data.sh` writes and checks a
@@ -48,9 +49,15 @@ make deploy-provider-e2e                     # DOCUMENTDB_IMAGE_MODE=combined fo
 #   make build-controller docker-build-controller, then here
 #   make load-openeverest-controller-image, then there
 #   make deploy-test-controller wait-test-controller
-make test-e2e-cluster                        # or test-e2e-cluster-lifecycle, test-e2e-cluster-tls
+make test-e2e-cluster                        # lifecycle and tls; or test-e2e-cluster-lifecycle, test-e2e-cluster-tls
 ```
 
+The upgrade suite starts from the released chart: deploy it with
+`make deploy-provider-previous` (instead of `deploy-provider-e2e`), then run
+`make test-e2e-cluster-upgrade`; the suite upgrades to `IMG` itself. Run it on
+its own cluster, or redeploy the previous release before it.
+
 Any cluster with those pieces works, for example a cloud one with its own
-StorageClass and load balancers. Volumes there may have a minimum size: the
+StorageClass and load balancers; push the image to a registry its nodes reach
+and set `PROVIDER_IMAGE_PULL_POLICY=Always` instead of `make load-image`. Volumes there may have a minimum size: the
 tests use 10Gi, grown to 12Gi.
