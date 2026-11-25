@@ -1,0 +1,18 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: docdb-issuer
+(metadata.generation == status.observedGeneration): true
+status:
+  phase: Provisioned
+  (conditions[?type == 'Ready'].status | [0]): "True"
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: docdb-issuer-gateway-cert
+spec:
+  (contains(dnsNames, 'docdb.e2e.example')): false
+  (contains(dnsNames, 'docdb2.e2e.example')): true
+status:
+  (conditions[?type == 'Ready'].status | [0]): "True"

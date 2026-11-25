@@ -1,0 +1,24 @@
+---
+# k3d cluster of the e2e-cluster suites (make k3d-cluster-up
+# K3D_CONFIG=./test/e2e-cluster/k3d_config.yaml). Unlike dev/k3d_config.yaml it
+# keeps the servicelb load balancer, which gives LoadBalancer Services an
+# address, and runs a Kubernetes and containerd recent enough for ImageVolume.
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: provider-documentdb-test
+servers: 1
+agents: 0
+image: rancher/k3s:v1.35.10-k3s1
+options:
+  k3d:
+    wait: true
+    disableLoadbalancer: true
+  k3s:
+    extraArgs:
+      - arg: "--disable=traefik,metrics-server"
+        nodeFilters:
+          - server:*
+      - arg: "--disable-network-policy"
+        nodeFilters:
+          - server:*

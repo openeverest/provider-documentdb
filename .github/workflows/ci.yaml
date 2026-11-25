@@ -103,3 +103,35 @@ jobs:
       make_target: test-integration-core
       suite: core
     secrets: inherit
+
+  # End-to-end suites against the real DocumentDB operator and CloudNativePG,
+  # through the reusable e2e-cluster-test.yaml workflow. The lifecycle suite
+  # runs in both image modes: auto, which picks ImageVolume on the k3s 1.35
+  # cluster, and the combined image.
+  test-e2e-cluster-lifecycle:
+    name: E2E cluster / lifecycle (ImageVolume)
+    needs: [lint, build, verify]
+    uses: ./.github/workflows/e2e-cluster-test.yaml
+    with:
+      make_target: test-e2e-cluster-lifecycle
+      suite: lifecycle-imagevolume
+      operator_image_mode: auto
+      expected_image_mode: imageVolume
+
+  test-e2e-cluster-lifecycle-combined:
+    name: E2E cluster / lifecycle (combined image)
+    needs: [lint, build, verify]
+    uses: ./.github/workflows/e2e-cluster-test.yaml
+    with:
+      make_target: test-e2e-cluster-lifecycle
+      suite: lifecycle-combined
+      operator_image_mode: combined
+      expected_image_mode: combined
+
+  test-e2e-cluster-tls:
+    name: E2E cluster / TLS
+    needs: [lint, build, verify]
+    uses: ./.github/workflows/e2e-cluster-test.yaml
+    with:
+      make_target: test-e2e-cluster-tls
+      suite: tls
