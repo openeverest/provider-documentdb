@@ -22,3 +22,8 @@ dependencies:
     version: "1.2.1"
     repository: oci://ghcr.io/documentdb
     condition: operator.enabled
+annotations:
+  openeverest.io/contract-version: "2.0.0-alpha.1.next"
+  # The API versions this chart needs the cluster to serve, which provider-sdk
+  # renders it with: the operator chart refuses to render without cert-manager's.
+  openeverest.io/api-versions: cert-manager.io/v1/Certificate
