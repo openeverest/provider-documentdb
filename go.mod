@@ -107,7 +107,7 @@ require (
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/muesli/termenv v0.16.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
-	github.com/openeverest/provider-sdk v0.4.1-0.20261125215243-6b7a4d8476ad // indirect
+	github.com/openeverest/provider-sdk v0.4.1-0.20261126123055-ae6eafb98e1b // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.95.2 // indirect
