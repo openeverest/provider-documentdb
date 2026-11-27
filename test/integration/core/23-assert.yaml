@@ -1,0 +1,14 @@
+# Approved: the DocumentDB moves to the new version and nothing is pending.
+apiVersion: documentdb.io/v1
+kind: DocumentDB
+metadata:
+  name: test-instance
+spec:
+  documentDBVersion: "1.0.1"
+---
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: test-instance
+status:
+  (length(pendingMaintenance || `[]`)): 0

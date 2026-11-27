@@ -12,7 +12,7 @@ metadata:
 spec:
   nodeCount: 1
   instancesPerNode: 3
-  documentDBVersion: "1.0.1"
+  documentDBVersion: "1.0.0"
   schemaVersion: auto
   documentDbCredentialSecret: test-instance-credentials
   resource:

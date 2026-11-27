@@ -177,6 +177,34 @@ func TestHoldDisruptiveChanges(t *testing.T) {
 		assert.Equal(t, collector, db.Spec.Monitoring)
 	})
 
+	t.Run("version", func(t *testing.T) {
+		t.Parallel()
+		onOldVersion := live.DeepCopy()
+		onOldVersion.Spec.DocumentDBVersion = "1.0.0"
+
+		db, pending := gate(t, onOldVersion, nil, nil, nil)
+		require.Len(t, pending, 1)
+		assert.Equal(t, "upgrade-to-1.0.1", pending[0].ApprovalToken)
+		assert.Equal(t, controller.MaintenanceRollingRestart, pending[0].Severity)
+		assert.Contains(t, pending[0].Description, "from 1.0.0 to 1.0.1")
+		assert.Contains(t, pending[0].Description, "cannot be undone")
+		assert.Equal(t, "1.0.0", db.Spec.DocumentDBVersion)
+
+		for _, maintenance := range []*corev1alpha1.MaintenanceSpec{
+			{Approved: "upgrade-to-1.0.1"},
+			{AutoApproveUpTo: controller.MaintenanceRollingRestart},
+		} {
+			db, pending = gate(t, onOldVersion, maintenance, nil, nil)
+			assert.Empty(t, pending)
+			assert.Equal(t, "1.0.1", db.Spec.DocumentDBVersion)
+		}
+
+		// An approval names its target version only.
+		db, pending = gate(t, onOldVersion, &corev1alpha1.MaintenanceSpec{Approved: "upgrade-to-1.0.2"}, nil, nil)
+		require.Len(t, pending, 1)
+		assert.Equal(t, "1.0.0", db.Spec.DocumentDBVersion)
+	})
+
 	t.Run("an approval covers only its change", func(t *testing.T) {
 		t.Parallel()
 		_, pending := gate(t, live, nil, nil, moreResources)

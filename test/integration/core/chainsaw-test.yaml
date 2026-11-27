@@ -8,7 +8,7 @@ metadata:
 spec:
   description: |
     Lifecycle of an Instance: create, simulate operator readiness, update,
-    hold the change of CPU and memory until it is approved, reject an invalid Instance and a change of the certificate source, and
+    hold the change of CPU and memory and the version upgrade until they are approved, reject an invalid Instance and a change of the certificate source, and
     delete.
 
   catch:
@@ -70,6 +70,32 @@ spec:
                 -p "{\"spec\":{\"maintenance\":{\"approved\":\"$token\"}}}"
         - assert:
             file: 21-assert.yaml
+
+    # The version upgrade migrates the extension schema irreversibly: the
+    # DocumentDB stays on 1.0.0 until the upgrade-to-1.0.1 action is approved.
+    - name: upgrade-version
+      try:
+        - patch:
+            resource:
+              apiVersion: core.openeverest.io/v1alpha1
+              kind: Instance
+              metadata:
+                name: test-instance
+              spec:
+                version: "1.0.1"
+        - assert:
+            file: 22-assert.yaml
+        - patch:
+            resource:
+              apiVersion: core.openeverest.io/v1alpha1
+              kind: Instance
+              metadata:
+                name: test-instance
+              spec:
+                maintenance:
+                  approved: upgrade-to-1.0.1
+        - assert:
+            file: 23-assert.yaml
 
     - name: reject-invalid-instance
       try:

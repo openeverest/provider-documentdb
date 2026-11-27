@@ -25,13 +25,14 @@ type podEnvelope struct {
 // with a token derived from the live and the desired value, so approving one
 // change never authorizes a later, different one. Changes that do not
 // restart pods (replicas, storage growth, backups, the Service type,
-// additionalNames) apply at once. The version and the PostgreSQL image are
-// gated separately.
+// additionalNames) apply at once. The PostgreSQL image is gated separately.
 func holdDisruptiveChanges(c *controller.Context, live, desired *dbv1.DocumentDB) error {
 	if live.ResourceVersion == "" {
 		// Creating: nothing runs yet.
 		return nil
 	}
+
+	holdVersionChange(c, live, desired)
 
 	liveEnvelope := podEnvelope{CPU: live.Spec.Resource.CPU, Memory: live.Spec.Resource.Memory}
 	desiredEnvelope := podEnvelope{CPU: desired.Spec.Resource.CPU, Memory: desired.Spec.Resource.Memory}
@@ -57,6 +58,28 @@ func holdDisruptiveChanges(c *controller.Context, live, desired *dbv1.DocumentDB
 		live.Spec.Monitoring, desired.Spec.Monitoring, func() {
 			desired.Spec.Monitoring = live.Spec.Monitoring.DeepCopy()
 		})
+}
+
+// holdVersionChange keeps the running DocumentDB version until the change is
+// approved. The version selects the extension and gateway images, so the
+// change rolls the pods, and with schemaVersion auto the operator migrates
+// the extension schema at once, after which it refuses the old version. The
+// token names the target version, as the migration is what is approved.
+func holdVersionChange(c *controller.Context, live, desired *dbv1.DocumentDB) {
+	running, target := live.Spec.DocumentDBVersion, desired.Spec.DocumentDBVersion
+	if running == target {
+		return
+	}
+	if !c.RequestMaintenance(versionUpgradeToken(target), fmt.Sprintf(
+		"Upgrade DocumentDB from %s to %s (rolling restart). The extension schema migrates to %s, "+
+			"which cannot be undone: the instance cannot go back to %s afterwards",
+		running, target, target, running), controller.MaintenanceRollingRestart) {
+		desired.Spec.DocumentDBVersion = running
+	}
+}
+
+func versionUpgradeToken(version string) string {
+	return "upgrade-to-" + version
 }
 
 // gateChange requests a rolling restart when live and desired differ and
