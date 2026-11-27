@@ -163,6 +163,10 @@ helm install provider-documentdb \
 
 The chart's install notes warn when it finds OpenShift and the IDs are still set.
 
+Database pods don't start under `restricted-v2` yet: the DocumentDB operator (1.2.1 and 1.2.2)
+pins the gateway sidecar it injects into them to user and group `1000`. That needs a fix in the
+operator.
+
 ### Operator upgrades
 
 A new DocumentDB or CloudNativePG operator, whether it comes with a provider release or
