@@ -18,3 +18,13 @@
 
 NOTE: Ensure that the following prerequisites are installed in your cluster:
   - OpenEverest CRDs (Instances, Providers)
+{{- if and .Values.operator.enabled (.Capabilities.APIVersions.Has "security.openshift.io/v1/SecurityContextConstraints") }}
+{{- $sc := default dict (default dict .Values.operator.operator).containerSecurityContext }}
+{{- if or $sc.runAsUser $sc.runAsGroup }}
+
+WARNING: OpenShift detected, but the DocumentDB operator pins runAsUser/runAsGroup
+  ({{ $sc.runAsUser }}/{{ $sc.runAsGroup }}). The restricted-v2 SCC rejects its pod. Unset them:
+    --set operator.operator.containerSecurityContext.runAsUser=null
+    --set operator.operator.containerSecurityContext.runAsGroup=null
+{{- end }}
+{{- end }}

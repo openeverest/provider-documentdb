@@ -111,6 +111,21 @@ jobs:
             | diff -q - internal/operatorcrds/crd.yaml \
             || { echo '::error::internal/operatorcrds/crd.yaml differs from the bundled documentdb-operator chart CRDs. Align the operator version in go.mod with the chart dependency and run make generate.'; exit 1; }
 
+      # OpenShift's restricted-v2 SCC rejects pods that pin user or group IDs
+      # outside the namespace range. Rendered with the README's OpenShift values.
+      - name: Verify no fixed pod IDs on OpenShift
+        run: |
+          helm template test charts/provider-documentdb \
+            --api-versions cert-manager.io/v1/Certificate \
+            --api-versions security.openshift.io/v1/SecurityContextConstraints \
+            --set operator.operator.containerSecurityContext.runAsUser=null \
+            --set operator.operator.containerSecurityContext.runAsGroup=null \
+            | yq ea 'select(.kind == "Deployment" or .kind == "Job") | .spec.template' > /tmp/pods.yaml
+          grep -q 'containers:' /tmp/pods.yaml || { echo '::error::no pod templates rendered'; exit 1; }
+          if grep -nE 'runAsUser|runAsGroup|fsGroup' /tmp/pods.yaml; then
+            echo '::error::a pod pins user or group IDs, which restricted-v2 rejects'; exit 1
+          fi
+
   # Each integration suite runs as a separate job through the reusable
   # integration-test.yaml workflow. To add a suite, create a directory under
   # test/integration/, add a matching test-integration-<suite> Make target,

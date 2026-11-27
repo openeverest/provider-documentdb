@@ -308,6 +308,10 @@ deploy-operator: ## Install or upgrade the DocumentDB operator chart OPERATOR_VE
 		--create-namespace \
 		--namespace documentdb-operator \
 		--set imageMode=$(DOCUMENTDB_IMAGE_MODE) \
+		--set sidecarInjector.containerSecurityContext.runAsUser=null \
+		--set sidecarInjector.containerSecurityContext.runAsGroup=null \
+		--set cloudnative-pg.containerSecurityContext.runAsUser=null \
+		--set cloudnative-pg.containerSecurityContext.runAsGroup=null \
 		--wait --timeout 10m
 
 .PHONY: deploy-provider-operator-previous

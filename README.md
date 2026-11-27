@@ -125,6 +125,7 @@ together with the CloudNativePG operator it builds on:
 - For backups, install the VolumeSnapshot CRDs and a snapshot-capable CSI driver before the
   chart. CloudNativePG looks for the CRDs when it starts: if you add them later, restart it.
 - Set `operator.enabled=false` to manage the DocumentDB operator yourself.
+- On OpenShift, see [Pod security and OpenShift](#pod-security-and-openshift).
 
 Upgrade and uninstall:
 
@@ -140,6 +141,27 @@ the upgrade, changing nothing, if any would be left unsupported. Its log lists t
 Job applies the bundled DocumentDB operator's CRDs, which Helm installs but never upgrades,
 so the new operator starts with the CRDs it needs. CloudNativePG's CRDs are chart templates
 that Helm upgrades itself. With `operator.enabled=false` the hook only runs the check.
+
+### Pod security and OpenShift
+
+The chart's pods (the provider, its pre-upgrade hook, the DocumentDB operator, its sidecar
+injector and CloudNativePG) meet the Kubernetes `restricted` Pod Security Standard. Only the
+DocumentDB operator pins user and group IDs (`100`/`101`): its image's user is a name, so
+Kubernetes can't otherwise verify that it isn't root.
+
+OpenShift's `restricted-v2` SCC assigns IDs from each namespace's range and rejects pods that
+pin others, so unset the operator's IDs there:
+
+```bash
+helm install provider-documentdb \
+  oci://ghcr.io/openeverest/charts/provider-documentdb \
+  --version <chart-version> \
+  --namespace everest-system \
+  --set operator.operator.containerSecurityContext.runAsUser=null \
+  --set operator.operator.containerSecurityContext.runAsGroup=null
+```
+
+The chart's install notes warn when it finds OpenShift and the IDs are still set.
 
 ### Operator upgrades
 
