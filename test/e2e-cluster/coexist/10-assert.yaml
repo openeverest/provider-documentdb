@@ -1,0 +1,29 @@
+# The engine's ready replicas are counted from the pods found by the
+# OpenEverest labels, which CloudNativePG copies from the Cluster's
+# inheritedMetadata.
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: docdb
+status:
+  phase: Provisioned
+  (conditions[?type == 'Ready'].status | [0]): "True"
+  (components[?name == 'engine'] | [0].readyReplicas): 1
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: docdb
+spec:
+  inheritedMetadata:
+    labels:
+      core.openeverest.io/instance: docdb
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    cnpg.io/cluster: docdb
+    core.openeverest.io/instance: docdb
+status:
+  phase: Running

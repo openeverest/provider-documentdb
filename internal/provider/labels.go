@@ -16,11 +16,12 @@ import (
 // labelPods gets the OpenEverest pod labels onto the DocumentDB pods, which
 // the runtime counts into status.components and monitoring classes select.
 //
-// The DocumentDB resource has no pod labels field. CloudNativePG copies the
-// labels of its Cluster that match INHERITED_LABELS onto the pods, which the
-// chart sets to core.openeverest.io/*, so the labels go on the Cluster the
-// operator creates. The operator patches the Cluster's spec only and leaves
-// them alone.
+// The DocumentDB resource has no pod labels field, so the labels go into
+// spec.inheritedMetadata of the CloudNativePG Cluster the operator creates.
+// CloudNativePG copies them onto the pods in place, without a restart, and
+// whatever its INHERITED_LABELS setting, so any CloudNativePG installation
+// works, such as the one provider-cloudnative-pg brings. The operator never
+// patches spec.inheritedMetadata after creating the Cluster.
 func labelPods(c *controller.Context) error {
 	labels := c.PodLabels(common.ComponentEngine)
 
@@ -33,24 +34,39 @@ func labelPods(c *controller.Context) error {
 		return fmt.Errorf("get CloudNativePG Cluster: %w", err)
 	}
 
-	missing := false
-	for key, value := range labels {
-		if cluster.Labels[key] != value {
-			missing = true
-			break
-		}
-	}
-	if !missing {
+	patched := cluster.DeepCopy()
+	if !inheritLabels(patched, labels) {
 		return nil
 	}
-
-	patched := cluster.DeepCopy()
-	if patched.Labels == nil {
-		patched.Labels = map[string]string{}
-	}
-	maps.Copy(patched.Labels, labels)
 	if err := c.Client().Patch(c.Context(), patched, client.MergeFrom(cluster)); err != nil {
 		return fmt.Errorf("label CloudNativePG Cluster: %w", err)
 	}
 	return nil
+}
+
+// inheritLabels adds labels to the Cluster's inherited metadata, keeping the
+// ones the operator sets there. It reports whether anything changed.
+func inheritLabels(cluster *cnpgv1.Cluster, labels map[string]string) bool {
+	inherited := cluster.Spec.InheritedMetadata
+	if inherited != nil {
+		missing := false
+		for key, value := range labels {
+			if inherited.Labels[key] != value {
+				missing = true
+				break
+			}
+		}
+		if !missing {
+			return false
+		}
+	}
+	if inherited == nil {
+		inherited = &cnpgv1.EmbeddedObjectMetadata{}
+		cluster.Spec.InheritedMetadata = inherited
+	}
+	if inherited.Labels == nil {
+		inherited.Labels = map[string]string{}
+	}
+	maps.Copy(inherited.Labels, labels)
+	return true
 }

@@ -177,3 +177,23 @@ jobs:
       make_target: test-e2e-cluster-operator-upgrade
       suite: operator-upgrade
       deploy_target: deploy-provider-operator-previous
+
+  # Next to provider-cloudnative-pg, installed before or after the provider:
+  # both run on one CloudNativePG, the one installed first.
+  test-e2e-cluster-coexist-cnpg-first:
+    name: E2E cluster / coexist (provider-cloudnative-pg first)
+    needs: [lint, build, verify]
+    uses: ./.github/workflows/e2e-cluster-test.yaml
+    with:
+      make_target: test-e2e-cluster-coexist-cnpg-first
+      suite: coexist-cnpg-first
+      deploy_target: deploy-provider-coexist-cnpg-first
+
+  test-e2e-cluster-coexist-documentdb-first:
+    name: E2E cluster / coexist (provider-documentdb first)
+    needs: [lint, build, verify]
+    uses: ./.github/workflows/e2e-cluster-test.yaml
+    with:
+      make_target: test-e2e-cluster-coexist-documentdb-first
+      suite: coexist-documentdb-first
+      deploy_target: deploy-provider-coexist-documentdb-first

@@ -1,0 +1,88 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: coexist
+spec:
+  description: |
+    The provider next to provider-cloudnative-pg, on one CloudNativePG in
+    CNPG_NAMESPACE: provider-cloudnative-pg's, or the one the chart bundles,
+    depending on which provider was installed first (see the
+    deploy-provider-coexist-* Make targets). The Provider reports the
+    CloudNativePG as supported, an Instance of each provider gets Ready, the
+    DocumentDB Instance's pods carry the OpenEverest labels, and installing
+    the chart with its bundled CloudNativePG fails with the settings to use.
+  catch:
+    - script:
+        content: kubectl -n $NAMESPACE get instance,documentdb,clusters.postgresql.cnpg.io,pods,pvc -o wide
+    - script:
+        content: kubectl -n $NAMESPACE get instance,documentdb,clusters.postgresql.cnpg.io -o yaml
+    - script:
+        content: kubectl get provider -o yaml
+    - script:
+        content: kubectl get deployments -A -l app.kubernetes.io/name=cloudnative-pg -o wide
+    - script:
+        content: kubectl -n $NAMESPACE get events --sort-by=.lastTimestamp | tail -40
+    - podLogs:
+        namespace: provider-system
+        selector: app.kubernetes.io/name=provider-documentdb
+        tail: 100
+  steps:
+    - name: one-cloudnative-pg
+      try:
+        - script:
+            content: |
+              set -eu
+              got=$(kubectl get deployments -A -l app.kubernetes.io/name=cloudnative-pg \
+                -o jsonpath='{range .items[*]}{.metadata.namespace}{"\n"}{end}' | sort -u)
+              echo "CloudNativePG in: $got"
+              test "$got" = "$CNPG_NAMESPACE"
+        - script:
+            timeout: 3m
+            content: |
+              set -eu
+              for i in $(seq 1 36); do
+                cond=$(kubectl get provider documentdb \
+                  -o jsonpath='{.status.conditions[?(@.type=="CloudNativePGCompatible")].status} {.status.conditions[?(@.type=="CloudNativePGCompatible")].message}')
+                case "$cond" in "True "*) break ;; esac
+                sleep 5
+              done
+              echo "CloudNativePGCompatible: $cond"
+              case "$cond" in
+                "True CloudNativePG "*" in namespace $CNPG_NAMESPACE.") ;;
+                *) exit 1 ;;
+              esac
+
+    - name: documentdb-instance
+      try:
+        - apply:
+            file: ../_lib/mongosh.yaml
+        - apply:
+            file: 10-documentdb.yaml
+        - assert:
+            timeout: 10m
+            file: 10-assert.yaml
+        - script:
+            content: |
+              set -eu
+              sh ../_lib/data.sh write docdb
+              sh ../_lib/data.sh check docdb
+
+    - name: cloudnative-pg-instance
+      try:
+        - apply:
+            file: 20-postgresql.yaml
+        - assert:
+            timeout: 10m
+            file: 20-assert.yaml
+
+    - name: bundled-cloudnative-pg-refused
+      try:
+        - script:
+            content: |
+              set -u
+              out=$(helm install second "$PROVIDER_ROOT_PATH/charts/provider-documentdb" \
+                --namespace "$NAMESPACE" --dry-run=server 2>&1)
+              status=$?
+              echo "$out" | tail -n 3
+              want="--set operator.cloudnative-pg.enabled=false --set operator.cloudnative-pg.namespaceOverride=$CNPG_NAMESPACE"
+              [ $status -ne 0 ] && echo "$out" | grep -qF -- "$want"

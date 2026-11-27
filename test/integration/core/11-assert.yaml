@@ -14,10 +14,12 @@ apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
   name: test-instance
-  labels:
-    core.openeverest.io/instance: test-instance
-    core.openeverest.io/component: engine
-    core.openeverest.io/provider: documentdb
+spec:
+  inheritedMetadata:
+    labels:
+      core.openeverest.io/instance: test-instance
+      core.openeverest.io/component: engine
+      core.openeverest.io/provider: documentdb
 ---
 apiVersion: v1
 kind: Secret

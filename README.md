@@ -48,7 +48,7 @@ manages pods directly — all lifecycle work is delegated to the operator.
 
 | provider-documentdb | OpenEverest | DocumentDB operator | DocumentDB | Kubernetes |
 |---|---|---|---|---|
-| `0.1.x` | `2.0.0-alpha.1` | `1.2.1` (bundles CloudNativePG `1.29.1`) | `1.0.0`, `1.0.1` | `1.32` or later |
+| `0.1.x` | `2.0.0-alpha.1` | `1.2.1` (bundles CloudNativePG `1.29.1`; runs on CloudNativePG `1.29` or `1.30`) | `1.0.0`, `1.0.1` | `1.32` or later |
 
 [cert-manager](https://cert-manager.io/) is required: the operator issues its webhook and
 gateway certificates with it.
@@ -99,11 +99,29 @@ The DocumentDB operator is bundled as a chart dependency and is installed automa
 together with the CloudNativePG operator it builds on:
 
 - CloudNativePG goes to the `cnpg-system` namespace. If it is already installed (for example
-  by `provider-cloudnative-pg`), installing a second one fails on its CRDs: set
-  `operator.cloudnative-pg.enabled=false` and add `INHERITED_LABELS: core.openeverest.io/*`
-  to the existing installation's operator configuration. The provider puts the OpenEverest
-  labels on the CloudNativePG `Cluster`, and CloudNativePG copies them to the pods only with
-  that setting; without it the Instance's pods are not counted and not monitored.
+  by `provider-cloudnative-pg`), the install fails and tells you the namespace to use; run the
+  DocumentDB operator on the existing CloudNativePG instead:
+
+  ```bash
+  helm install provider-documentdb \
+    oci://ghcr.io/openeverest/charts/provider-documentdb \
+    --version <chart-version> \
+    --namespace everest-system \
+    --set operator.cloudnative-pg.enabled=false \
+    --set operator.cloudnative-pg.namespaceOverride=everest-system
+  ```
+
+  `namespaceOverride` is the CloudNativePG namespace (`everest-system` for
+  `provider-cloudnative-pg`): the DocumentDB sidecar plugin is installed there, where
+  CloudNativePG looks for plugins. The `Provider` reports whether that CloudNativePG is one the
+  DocumentDB operator supports, in its `CloudNativePGCompatible` condition:
+
+  ```bash
+  kubectl get provider documentdb -o jsonpath='{.status.conditions[?(@.type=="CloudNativePGCompatible")]}'
+  ```
+
+  Installed the other way round, `provider-cloudnative-pg` needs `cloudnative-pg.enabled=false`
+  to run on the bundled CloudNativePG.
 - For backups, install the VolumeSnapshot CRDs and a snapshot-capable CSI driver before the
   chart. CloudNativePG looks for the CRDs when it starts: if you add them later, restart it.
 - Set `operator.enabled=false` to manage the DocumentDB operator yourself.
@@ -466,7 +484,7 @@ kubectl logs -n everest-system deploy/provider-documentdb -f
 | No `Provider` resource in the cluster | Is the chart installed? Check the provider deployment logs |
 | `Instance` ignored entirely | `spec.providerRef.name` must be `documentdb` |
 | Operator resource created but no pods | `kubectl describe documentdb <name>` and the `clusters.postgresql.cnpg.io` of the same name — the failure is upstream |
-| Instance Ready but `status.components` empty, no metrics | CloudNativePG lacks `INHERITED_LABELS: core.openeverest.io/*` (see [Installation](#installation)) |
+| Instance Ready but `status.components` empty, no metrics | The `Provider`'s `CloudNativePGCompatible` condition: `kubectl get provider documentdb -o jsonpath='{.status.conditions}'` (see [Installation](#installation)) |
 | Backups fail with `missing VolumeSnapshot CRD` | Install the VolumeSnapshot CRDs, then restart the CloudNativePG operator |
 | Backups stay `pending` or fail | The storage class needs a CSI driver with snapshot support and a default `VolumeSnapshotClass` |
 

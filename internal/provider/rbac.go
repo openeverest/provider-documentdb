@@ -9,6 +9,8 @@ package provider
 // +kubebuilder:rbac:groups=core.openeverest.io,resources=instances/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=core.openeverest.io,resources=instances/finalizers,verbs=update
 // +kubebuilder:rbac:groups=core.openeverest.io,resources=providers,verbs=get;list;watch
+// The CloudNativePG check reports on the Provider's status.
+// +kubebuilder:rbac:groups=core.openeverest.io,resources=providers/status,verbs=get;patch
 // +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 // The runtime records validation warnings as events.k8s.io Events.
@@ -25,7 +27,7 @@ package provider
 // +kubebuilder:rbac:groups=documentdb.io,resources=backups,verbs=get;list;watch
 
 // The CloudNativePG Cluster the operator creates is read for the ready
-// instances and labelled so its pods inherit the OpenEverest labels.
+// instances and given the OpenEverest labels for its pods to inherit.
 // +kubebuilder:rbac:groups=postgresql.cnpg.io,resources=clusters,verbs=get;list;watch;patch
 
 // The provider keeps the names of the gateway certificate the operator
@@ -37,6 +39,9 @@ package provider
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;patch
 // The runtime counts the labelled pods into status.components.
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
+// The CloudNativePG check reads the version of the CloudNativePG operator from
+// its Deployment, and finds the DocumentDB plugin's Service next to it.
+// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=list
 
 // Monitoring: the runtime resolves the Instance's bindings and reports them.
 // +kubebuilder:rbac:groups=monitoring.openeverest.io,resources=monitoringclasses;monitoringdestinations;monitoringbindings,verbs=get;list;watch

@@ -1,0 +1,27 @@
+{{- /*
+Fails the install when CloudNativePG is already installed, for example by
+provider-cloudnative-pg, and the bundled one is enabled: Helm would otherwise
+fail on the ownership of its CRDs, without saying what to set. Renders nothing.
+lookup returns nothing in helm template, so the check only runs against a
+cluster.
+*/ -}}
+{{- if and .Values.operator.enabled (index .Values.operator "cloudnative-pg" "enabled") }}
+{{- $crd := lookup "apiextensions.k8s.io/v1" "CustomResourceDefinition" "" "clusters.postgresql.cnpg.io" }}
+{{- if $crd }}
+{{- $annotations := $crd.metadata.annotations | default dict }}
+{{- $release := index $annotations "meta.helm.sh/release-name" | default "" }}
+{{- $releaseNamespace := index $annotations "meta.helm.sh/release-namespace" | default "" }}
+{{- if or (ne $release .Release.Name) (ne $releaseNamespace .Release.Namespace) }}
+{{- $namespace := "<its namespace>" }}
+{{- $webhook := lookup "admissionregistration.k8s.io/v1" "MutatingWebhookConfiguration" "" "cnpg-mutating-webhook-configuration" }}
+{{- if and $webhook $webhook.webhooks }}
+{{- $namespace = (first $webhook.webhooks).clientConfig.service.namespace }}
+{{- end }}
+{{- $owner := "" }}
+{{- if $release }}
+{{- $owner = printf " by Helm release %s/%s" $releaseNamespace $release }}
+{{- end }}
+{{- fail (printf "CloudNativePG is already installed%s, in namespace %s. Install with --set operator.cloudnative-pg.enabled=false --set operator.cloudnative-pg.namespaceOverride=%s to run the DocumentDB operator on it." $owner $namespace $namespace) }}
+{{- end }}
+{{- end }}
+{{- end }}
